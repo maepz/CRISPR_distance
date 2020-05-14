@@ -105,13 +105,13 @@ class CRISPR_pair:
         
     def get_combi(self,l1,l2):
 
-        ''' The function get_combi outputs a dictionary of all the possible combinations of spacers categories + their weight for each ancestor length. 
-        {n:[[c,i,j,u]],ws} with:
+        ''' The function get_combi outputs a dictionary of each putative ancestor length and 1) a list of all the possible combinations of spacers categories producing this ancestor size and 2) a list of their respective associated adjusted weights. 
+        {n:[list([c,i,j,u]),list([ws])]} with:
         n length of ancestral array, 
         c number of spacers in common (spacers necessarily present in ancerstor), 
         i number of ancestral spacers amongst the spacers only present in array1, 
         j number of ancestral spacers amongt these only present in array 2.
-        ws weight of each putative ancestral array from this combi
+        ws associated weight of each combi; probability of having this combi given the ancestral array size (relative abundance on ancestors with this combi for this size)
         l1 (min ancestor length) and l2 (max ancestor length) have to be provided'''
 
         from CRISPR_functions import combi
@@ -132,7 +132,7 @@ class CRISPR_pair:
         
         for n in spacers_combi.keys():
             ancestor_counts=sum([combi(comb).array_counts for comb in spacers_combi[n][0]]) 
-            spacers_combi[n]+=[1/ancestor_counts]
+            spacers_combi[n]+=[[combi(comb).array_counts/ancestor_counts for comb in spacers_combi[n][0]]]
         return(spacers_combi)
 
 
