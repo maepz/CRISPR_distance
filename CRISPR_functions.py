@@ -105,7 +105,7 @@ class CRISPR_pair:
         
     def get_combi(self,l1,l2):
 
-        ''' Get a dictionary of all the possible combinations of spacers categories + their weight for each ancestor length. 
+        ''' The function get_combi outputs a dictionary of all the possible combinations of spacers categories + their weight for each ancestor length. 
         {n:[[c,i,j,u]],ws} with:
         n length of ancestral array, 
         c number of spacers in common (spacers necessarily present in ancerstor), 
