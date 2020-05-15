@@ -34,7 +34,7 @@ def categorize_spacers_for_ordered_model(s1,s2):
     return(c1_spacers,c2_spacers,d1_spacers,d2_spacers)
 
 def is_overlapping(s1, s2):
-    ''' Are two CRISPR arrays overlappng? '''
+    ''' Are two CRISPR arrays overlapping? '''
     for i in s1:
         if i in s2:
             answer=1
@@ -55,20 +55,21 @@ class combi:
     
     the lengths of the putative ancestral arrays n = sum([c,i,j,u])"""
     
-    def __init__(self,list):
+    def __init__(self,liste):
         from CRISPR_functions import nCr
-
-        self.c= list[0]
-        self.i= list[1]
-        self.j= list[2]
-        self.u= list[3]
-        self.n= sum(list)
-        possible_positions_of_u=nCr(self.n,self.u)
+        self.list = liste
+        self.c = liste[0]
+        self.i = liste[1]
+        self.j = liste[2]
+        self.u = liste[3]
+        self.n = sum(self.list)
+        possible_positions_of_u = nCr(self.n,self.u)
         possible_combinations_of_d1_and_d2=nCr(self.i+self.j,self.i)
         
-        self.array_counts=possible_positions_of_u*possible_combinations_of_d1_and_d2 # to get the number of putative ancestors
+        self.array_counts = possible_positions_of_u*possible_combinations_of_d1_and_d2 # to get the number of putative ancestors
+        self.str = '-'.join(map(str,self.list))
         
-    def get_arrays(self,c_spacers,d1_spacers,d2_spacers): # to get the list of all possible arrays        
+    def get_arrays(self,c_spacers,d1_spacers,d2_spacers): # to get the list of all possible arrays not usefull       
         array_list2=[]
         def merge_lists(lst1,lst2):
             import itertools
