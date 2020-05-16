@@ -146,6 +146,8 @@ class CRISPR_pair:
         l1 (min ancestor length) and l2 (max ancestor length) have to be provided
         n length of ancestral array = sum(c,i,j,u) '''
         from CRISPR_functions import combi
+        from mpmath import mpf,mp
+        mp.dps = 100; mp.pretty = True
        
         l1=size_lims[0]
         l2=size_lims[1]
@@ -168,7 +170,7 @@ class CRISPR_pair:
             
             combi_strings=[combi.str for combi in v]
             ancestor_counts = sum([combi.array_counts for combi in v])
-            ancestor_weights = [combi.array_counts/ancestor_counts for combi in v]
+            ancestor_weights = [mpf(combi.array_counts)/ancestor_counts for combi in v]
             
             combi_output.update(dict(zip(combi_strings,ancestor_weights)))
 
@@ -191,27 +193,40 @@ def prob_n_given_ro(n,rho):
 
 def M(m,t,mu):
     '''probability of preserving m spacers in time t : M(m|t,mu)'''
-    import numpy as np
-    M=np.exp(-m*t*mu)
+    from mpmath import mpf,mp
+#     import numpy as np
+    mp.dps = 100; mp.pretty = True
+
+    M=mp.exp(-m*t*mu)
+#     M = np.frompyfunc(mp.exp(-m*t*mu))
     return(M)
 
 def D(d,t,mu):
     '''probability of loosing d spacers in time t : D(d|t,mu)'''
-    import numpy as np
-    D=np.power((1-np.exp(-t*mu)),d)
+    from mpmath import mpf,mp
+    mp.dps = 100; mp.pretty = True
+    D=mp.power((1-mp.exp(-t*mu)),d)
     return(D)
 
 def I(j,t,lbda,mu):
     '''probability of inserting d spacers in time t : D(d|t,mu)'''
-    import numpy as np
+    from mpmath import mpf,mp
+    from numpy import math
+    mp.dps = 100; mp.pretty = True
     rho=lbda/mu
-    a=rho*(1-np.exp(-t*mu))
-    I=(np.exp(-a)*np.power(a,j))/np.math.factorial(j)
+    a=rho*(1-mp.exp(-t*mu))
+    I=(mp.exp(-a)*mp.power(a,j))/math.factorial(j)
     return(I)
 
 
 def L(rho,t,PAIR,size_lims):
+    '''The likelihood of a pair of spacer arrays (s1, s2) with
+times (t1, t2) anf rho'''
     from CRISPR_functions import prob_n_given_ro, combi, CRISPR_pair, M, I, D
+    from mpmath import mpf
+    if not isinstance(rho, mpf):
+        print(str(rho)+' '+ str(type(rho)))
+
     t1=t[0]
     t2=t[1]
     l1=size_lims[0]
@@ -238,28 +253,48 @@ def L(rho,t,PAIR,size_lims):
 
 def neg_LL_floating_t(x,rho,PAIR,size_lims):
     import numpy as np
-    return(-np.log(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims)))
+    from mpmath import mpf,mp
+    mp.dps = 100; mp.pretty = True
+    return(np.float(-mp.log(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims))))
     
 def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays):
+    from mpmath import mpf,mp
     import numpy as np
-    neg_LL_overlapping=sum([-np.log(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))])
-    neg_LL_non_overlapping=sum([-np.log(prob_n_given_ro(len(pair[0]),x)*prob_n_given_ro(len(pair[1]),x)) for pair in non_overlapping_arrays])
+    mp.dps = 100; mp.pretty = True
+    if isinstance(x, np.ndarray) and len(x)==1:    
+        x=mpf(x[0])
+    neg_LL_overlapping=sum([-mp.log(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))])
+    neg_LL_non_overlapping=sum([-mp.log(prob_n_given_ro(len(pair[0]),x)*prob_n_given_ro(len(pair[1]),x)) for pair in non_overlapping_arrays])
+    print(neg_LL_overlapping+neg_LL_non_overlapping)
     return(neg_LL_overlapping+neg_LL_non_overlapping)
 
 
+
 def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
+    '''Provided a set of divergence times t1,t2 from ancestor to arrays for all array pairs, OPTIMIZE_rho finds the best rho'''
     from scipy.optimize import minimize
-    return(float(minimize(neg_LL_floating_rho,[2],method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)).x))
+    from mpmath import findroot,mpf
+    x0=mpf(2)
+    optimize=minimize(neg_LL_floating_rho,x0,method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays))
+#     optimize=findroot(neg_LL_floating_rho,[2],method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays))
+
+#     print(optimize)
+    return(float(optimize.x))
 
 def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
-    '''Provided a set of overlapping arrays and rho, find their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
+    '''Provided a set of overlapping arrays and rho, OPTIMIZE_t1t2 finds their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
     from scipy.optimize import minimize
-    
+#     from mpmath import findroot
     t1t2_list=[]
 
     for pair in overlapping_arrays:
         PAIR=CRISPR_pair(pair[0],pair[1])
-        t1t2_list+=[tuple(minimize(neg_LL_floating_t,[1,1],method='Powell',args=(rho,PAIR,size_lims)).x)]
+        x0=[1,1]
+        optimize=minimize(neg_LL_floating_t,x0,method='Powell',args=(rho,PAIR,size_lims))
+#         optimize=findroot(neg_LL_floating_t,[1,1],method='Powell',args=(rho,PAIR,size_lims))
+
+        print(optimize)
+        t1t2_list+=[tuple(optimize.x)]
     
     return(t1t2_list)
 
