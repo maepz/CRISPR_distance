@@ -5,10 +5,11 @@
 
 # ## Get the ansestors
 def get_limits_ancestor_sizes(arrays,p_low=0.005,p_high=0.995):
+    '''Given a set of arrays and rho, returns l1 and l2 the min and max ancestor lengths'''
+
     from scipy.stats import poisson
     rho=sum([len(ar) for ar in arrays])/len([len(ar) for ar in arrays])
-    '''Given a set of arrays and rho, returns l1 and l2 the min and max ancestor lengths'''
-    return(poisson.ppf([p_low,p_high],rho).astype(int))
+    return(tuple(poisson.ppf([p_low,p_high],rho).astype(int)))
 
 def nCr(n,r):
         import math
@@ -69,6 +70,31 @@ class combi:
         self.array_counts = possible_positions_of_u*possible_combinations_of_d1_and_d2 # to get the number of putative ancestors
         self.str = '-'.join(map(str,self.list))
         
+    def compare_ancestor_to_arrays(self,PAIR):
+        '''combi_s0= combi class object, PAIR= CRISPR_pair class object, returns for each array
+        m number of spacers maintained between ancestor and array
+        d number of spacers lost in array
+        j number of spacers gained in array'''
+
+        c=self.c
+        i=self.i
+        j=self.j
+        u=self.u
+        c1=len(PAIR.c1_spacers)
+        c2=len(PAIR.c2_spacers)
+        d1=len(PAIR.d1_spacers)
+        d2=len(PAIR.d2_spacers)
+
+
+        m1=c1+i
+        d1=j+u+c-c1
+        j1=d1-i
+        m2=c2+j
+        d2=i+u+c-c2
+        j2=d2-j
+
+        return(m1,d1,j1,m2,d2,j2)
+        
     def get_arrays(self,c_spacers,d1_spacers,d2_spacers): # to get the list of all possible arrays not usefull       
         array_list2=[]
         def merge_lists(lst1,lst2):
@@ -104,37 +130,45 @@ class CRISPR_pair:
         self.c_spacers = list(set(self.c1_spacers+self.c2_spacers))
         
         
-    def get_combi(self,l1,l2):
+    def get_combi(self,size_lims):
 
-        ''' The function get_combi outputs a dictionary of each putative ancestor length and 1) a list of all the possible combinations of spacers categories producing this ancestor size and 2) a list of their respective associated adjusted weights. 
-        {n:[list([c,i,j,u]),list([ws])]} with:
-        n length of ancestral array, 
+        ''' The function get_combi outputs a dictionary of all the possible combinations of spacers categories and their corresponding adjusted (per ancestor length) weights. 
+        {c-i-j-u:ws} with:
         c number of spacers in common (spacers necessarily present in ancerstor), 
         i number of ancestral spacers amongst the spacers only present in array1, 
-        j number of ancestral spacers amongt these only present in array 2.
-        ws associated weight of each combi; probability of having this combi given the ancestral array size (relative abundance on ancestors with this combi for this size)
-        l1 (min ancestor length) and l2 (max ancestor length) have to be provided'''
-
+        j number of ancestral spacers amongt these only present in array2,
+        u number of ancestral spacers lost in both array1 and array2,
+        ws weight of each putative ancestral array from this combi.
+        l1 (min ancestor length) and l2 (max ancestor length) have to be provided
+        n length of ancestral array = sum(c,i,j,u) '''
         from CRISPR_functions import combi
-
+       
+        l1=size_lims[0]
+        l2=size_lims[1]
         min_ansestor_len=min(len(self.c_spacers),l1)
         max_ansestor_len=max(len(self.c_spacers+self.d1_spacers+self.d2_spacers),l2)
         c=len(self.c_spacers)
         spacers_combi={}
+        combi_output={}
         for n in range(min_ansestor_len,max_ansestor_len+1):
             for i in range(len(self.d1_spacers)+1):
                 for j in range(len(self.d2_spacers)+1):
                     if c+i+j<n+1:
                         u=n-(c+i+j)
                         if n in spacers_combi.keys():
-                            spacers_combi[n][0]+=[[c,i,j,u]]
+                            spacers_combi[n]+=[combi([c,i,j,u])]
                         else:
-                            spacers_combi[n]=[[[c,i,j,u]]]
+                            spacers_combi[n]=[combi([c,i,j,u])]
         
-        for n in spacers_combi.keys():
-            ancestor_counts=sum([combi(comb).array_counts for comb in spacers_combi[n][0]]) 
-            spacers_combi[n]+=[[combi(comb).array_counts/ancestor_counts for comb in spacers_combi[n][0]]]
-        return(spacers_combi)
+        for n,v in spacers_combi.items():
+            
+            combi_strings=[combi.str for combi in v]
+            ancestor_counts = sum([combi.array_counts for combi in v])
+            ancestor_weights = [combi.array_counts/ancestor_counts for combi in v]
+            
+            combi_output.update(dict(zip(combi_strings,ancestor_weights)))
+
+        return(combi_output)
 
 
 # ## Math equations
@@ -172,6 +206,55 @@ def I(j,t,lbda,mu):
     return(I)
 
 
+def L(rho,t,PAIR,size_lims):
+    from CRISPR_functions import prob_n_given_ro, combi, CRISPR_pair, M, I, D
+    t1=t[0]
+    t2=t[1]
+    l1=size_lims[0]
+    l2=size_lims[1]
+    lbda=rho/(rho+1)
+    mu=1/(rho+1)
     
+    ancestors_dic= PAIR.get_combi(size_lims)
+    Likelihood=0
+    
+    for s0,ws in ancestors_dic.items():
+        combi_s0 = combi(list(map(int,s0.split('-'))))
+        n=combi_s0.n
+
+        m1,d1,j1,m2,d2,j2 = combi_s0.compare_ancestor_to_arrays(PAIR)
+
+        Qa = prob_n_given_ro(n,rho)*ws
+        T1 = M(m1,t1,mu)*D(d1,t1,mu)*I(j1,t1,lbda,mu)
+        T2 = M(m2,t2,mu)*D(d2,t2,mu)*I(j2,t2,lbda,mu)
+        
+        Likelihood += Qa*T1*T2
+    
+    return(Likelihood)
+
+def neg_LL_floating_t(x,rho,PAIR,size_lims):
+    import numpy as np
+    return(-np.log(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims)))
+    
+def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims):
+    import numpy as np
+    return(sum([-np.log(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))]))
+
+def OPTIMIZE_rho(t1t2_list,pair_list,size_lims):
+    from scipy.optimize import minimize
+
+    return(float(minimize(neg_LL_floating_rho,[2],method='Powell',args=(t1t2_list,pair_list,size_lims)).x))
+
+def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
+    '''Provided a set of overlapping arrays and rho, find their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
+    from scipy.optimize import minimize
+    
+    t1t2_list=[]
+
+    for pair in overlapping_arrays:
+        PAIR=CRISPR_pair(pair[0],pair[1])
+        t1t2_list+=[tuple(minimize(neg_LL_floating_t,[1,1],method='Powell',args=(rho,PAIR,size_lims)).x)]
+    
+    return(t1t2_list)
 
 
