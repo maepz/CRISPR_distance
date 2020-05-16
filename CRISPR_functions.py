@@ -23,6 +23,10 @@ def categorize_spacers_for_ordered_model(s1,s2):
     d1_spacers: spacers unique to s1
     d2_spacers: spacers unique to s2'''
     c_spacers=[]
+    c1_spacers=0
+    c2_spacers=0
+    d1_spacers=0
+    d2_spacers=0
     for i in range(len(s1)):
         sp=s1[i]
         if sp in s2:
@@ -236,14 +240,16 @@ def neg_LL_floating_t(x,rho,PAIR,size_lims):
     import numpy as np
     return(-np.log(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims)))
     
-def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims):
+def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays):
     import numpy as np
-    return(sum([-np.log(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))]))
+    neg_LL_overlapping=sum([-np.log(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))])
+    neg_LL_non_overlapping=sum([-np.log(prob_n_given_ro(len(pair[0]),x)*prob_n_given_ro(len(pair[1]),x)) for pair in non_overlapping_arrays])
+    return(neg_LL_overlapping+neg_LL_non_overlapping)
 
-def OPTIMIZE_rho(t1t2_list,pair_list,size_lims):
+
+def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
     from scipy.optimize import minimize
-
-    return(float(minimize(neg_LL_floating_rho,[2],method='Powell',args=(t1t2_list,pair_list,size_lims)).x))
+    return(float(minimize(neg_LL_floating_rho,[2],method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)).x))
 
 def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
     '''Provided a set of overlapping arrays and rho, find their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
