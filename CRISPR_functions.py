@@ -287,23 +287,23 @@ def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
     bounds=Bounds(lb=0,ub=np.inf)
 #     optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # Powell is overshooting at some point and try a rh0<0; it seems bounds have not been implemented for this method
     optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # method=L-BFGS-B
-    print(optimize)
-    return(optimize.x)
+#     print(optimize)
+    return(optimize.x,optimize.fun)
 
 def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
     '''Provided a set of overlapping arrays and rho, OPTIMIZE_t1t2 finds their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
     from scipy.optimize import minimize,Bounds
-#     from mpmath import findroot
+    import numpy as np
     t1t2_list=[]
 
     for pair in overlapping_arrays:
         PAIR=CRISPR_pair(pair[0],pair[1])
         x0=[1,1]
-        bounds=(Bounds(lb=0,ub=np.inf),Bounds(lb=0,ub=np.inf))
+        bnds = ((0, None), (0, None))
 #         optimize=minimize(neg_LL_floating_t,x0,bounds=bounds,method='Powell',args=(rho,PAIR,size_lims))
-        optimize=minimize(neg_LL_floating_t,x0,bounds=bounds,args=(rho,PAIR,size_lims)) # method=L-BFGS-B
+        optimize=minimize(neg_LL_floating_t,x0,bounds=bnds,args=(rho,PAIR,size_lims)) # method=L-BFGS-B
 
-        print(optimize)
+#         print(optimize)
         t1t2_list+=[tuple(optimize.x)]
     
     return(t1t2_list)
