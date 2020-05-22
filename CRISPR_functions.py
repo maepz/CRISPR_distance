@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # Here are the functions needed for CRISPR_distance
+# Here are the functions needed for CRISPR_distance
 
 # ## Get the ansestors
 def get_limits_ancestor_sizes(arrays,p_low=0.005,p_high=0.995):
@@ -86,16 +86,16 @@ class combi:
         u=self.u
         c1=len(PAIR.c1_spacers)
         c2=len(PAIR.c2_spacers)
-        d1=len(PAIR.d1_spacers)
-        d2=len(PAIR.d2_spacers)
+        dd1=len(PAIR.d1_spacers)
+        dd2=len(PAIR.d2_spacers)
 
 
         m1=c1+i
         d1=j+u+c-c1
-        j1=d1-i
+        j1=dd1-i
         m2=c2+j
         d2=i+u+c-c2
-        j2=d2-j
+        j2=dd2-j
 
         return(m1,d1,j1,m2,d2,j2)
         
@@ -177,7 +177,7 @@ class CRISPR_pair:
         return(combi_output)
 
 
-# ## Math equations
+## Math equations
 
 ### Length model 
 
@@ -276,6 +276,7 @@ def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays):
     return(neg_LL_overlapping+neg_LL_non_overlapping)
 
 
+## Optimizers
 
 
 def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
@@ -287,7 +288,6 @@ def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
     bounds=Bounds(lb=0,ub=np.inf)
 #     optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # Powell is overshooting at some point and try a rh0<0; it seems bounds have not been implemented for this method
     optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # method=L-BFGS-B
-#     print(optimize)
     return(optimize.x,optimize.fun)
 
 def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
@@ -302,10 +302,108 @@ def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
         bnds = ((0, None), (0, None))
 #         optimize=minimize(neg_LL_floating_t,x0,bounds=bounds,method='Powell',args=(rho,PAIR,size_lims))
         optimize=minimize(neg_LL_floating_t,x0,bounds=bnds,args=(rho,PAIR,size_lims)) # method=L-BFGS-B
-
-#         print(optimize)
         t1t2_list+=[tuple(optimize.x)]
     
     return(t1t2_list)
 
+######### Phylogeny from CRISPR_distance ###########
 
+def get_weights_for_all_pairs(df):
+    '''
+    Given a non-reversible distance matrix as pandas DataFrame, compute the weights for all pairs (x, y). Outputs the pair with maximum weight
+    '''
+    import pandas as pd
+    import numpy as np
+    import itertools
+    from itertools import permutations
+
+    wt=pd.DataFrame(np.nan,columns=df.columns,index=df.index)
+
+    for tu in list(itertools.permutations(df.columns,2)):
+        x=tu[0]
+        y=tu[1]
+        d_xy=df.loc[x,y]
+        d_yx=df.loc[y,x]
+        d_xz=sum(df.loc[x,:].drop([x,y]).fillna(0))
+        d_yz=sum(df.loc[y,:].drop([x,y]).fillna(0))
+        wt.loc[x,y]=((2-len(df.columns))*(d_xy+d_yx))+d_xz+d_yz
+    
+    max_x=wt.max().idxmax()
+    max_y=wt.loc[wt.max().idxmax()].idxmax()
+    max_pair=(max_x,max_y)
+    return(max_pair)
+
+def get_new_node_distance(df,max_pair):
+    ''' Given a non-reversible distance matrix as pandas DataFrame and the pair of closest neighbors, create new node and calculate distance to new node. Outputs the non-reversible distance matric with new node. Note that the initial pair is not dropped from the df  '''
+    from Bio.Phylo import BaseTree,draw_ascii
+    from Bio.Phylo.BaseTree import Clade,Tree
+    df2=df.copy()
+    t=df.index.max()+1
+    x=max_pair[0]
+    y=max_pair[1]
+    df2.loc[t] = ((df.loc[x,:]-df.loc[x,y]).fillna(0)+(df.loc[y,:]-df.loc[y,x]).fillna(0))/2
+    df2[t] = (df.loc[:,x].fillna(0)+df.loc[:,y].fillna(0))/2
+    df2.loc[x,t]=df.loc[x,y]
+    df2.loc[y,t]=df.loc[y,x]
+    return(df2)
+
+def phylogeny_from_CRISPR(arrays,final_dist):
+    '''Given a list of CRISPR arrays and a dictionnary of optimized distances, returns a phylogenetic tree (Tree class) of the CRISPR arrays and a dictionary of labels'''
+    import pandas as pd
+    import numpy as np
+    from Bio.Phylo import BaseTree,draw_ascii
+    from Bio.Phylo.BaseTree import Clade,Tree 
+
+    names=[i for i in range(len(arrays))]
+    seqs=['-'.join(map(str,arr)) for arr in arrays]
+
+    dic=dict(zip(names+seqs,seqs+names))
+    dic
+    df=pd.DataFrame(np.nan,columns=names,index=names)
+
+    for k,v in final_dist.items():
+        x=dic['-'.join(map(str,k.s1))] #row "distance from common ancestor to x..."
+        y=dic['-'.join(map(str,k.s2))] # column "...when associated to y"
+        d_xy=v[0]
+        d_yx=v[1]
+
+        df.loc[x,y]=d_xy
+        df.loc[y,x]=d_yx
+
+    # init terminal clades 
+    clades = dict(zip(df.index,(BaseTree.Clade(None, str(name)) for name in df.index)))
+    inner_count = len(df)-1
+
+    while len(df.columns)>1:
+        inner_count+=1
+
+        # find minimum distance pair
+        max_pair=get_weights_for_all_pairs(df)
+        min_i=max_pair[0]
+        min_j=max_pair[1]
+
+        # calculate nodeDist
+        df=get_new_node_distance(df,max_pair)
+
+        # create clade 
+        clade1 = clades[min_i] 
+        clade2 = clades[min_j] 
+        inner_clade = BaseTree.Clade(None, inner_count) 
+        inner_clade.clades.append(clade1) 
+        inner_clade.clades.append(clade2) 
+        # assign branch length 
+        clade1.branch_length = float(df.loc[min_i, min_j])
+        clade2.branch_length = float(df.loc[min_j, min_i])
+        # update node dict 
+        clades[inner_count] = inner_clade 
+        del clades[min_i]
+        del clades[min_j]
+        if len(clades)==1:
+            inner_clade.branch_length = None
+
+        # rebuild distance matrix
+        df=df.drop([min_i,min_j],axis=1).drop([min_i,min_j],axis=0)
+
+
+    TREE=Tree(inner_clade,rooted=True)
+    return(TREE,dic)
