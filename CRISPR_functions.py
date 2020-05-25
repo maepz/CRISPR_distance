@@ -388,7 +388,7 @@ def phylogeny_from_CRISPR(arrays,final_dist):
         # create clade 
         clade1 = clades[min_i] 
         clade2 = clades[min_j] 
-        inner_clade = BaseTree.Clade(None, inner_count) 
+        inner_clade = BaseTree.Clade(None, str(inner_count)) 
         inner_clade.clades.append(clade1) 
         inner_clade.clades.append(clade2) 
         # assign branch length 
