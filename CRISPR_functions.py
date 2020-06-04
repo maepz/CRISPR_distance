@@ -306,6 +306,53 @@ def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
     
     return(t1t2_list)
 
+
+def find_optimum_rho_and_distances_ordered_model(arrays):
+    '''
+    Given a list of arrays as input, optimize rho and t for the ordered model
+    
+    Output:dictionnary of pairs and their respecive distances, rho
+    
+    
+    '''
+    
+    from mpmath import mpf
+    import itertools
+    from itertools import combinations
+    import numpy as np
+    import CRISPR_functions
+    from CRISPR_functions import get_limits_ancestor_sizes,CRISPR_pair, OPTIMIZE_rho,OPTIMIZE_t1t2,is_overlapping
+    
+    overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2)) if is_overlapping(pair[0],pair[1])==1]
+
+    ## first step
+    rho_init=mpf(sum([len(ar) for ar in arrays])/len([len(ar) for ar in arrays]))
+    size_lims=get_limits_ancestor_sizes(arrays)
+    t1t2_list=OPTIMIZE_t1t2(overlapping_arrays, rho_init, size_lims)
+    pair_list=[CRISPR_pair(pair[0],pair[1]) for pair in overlapping_arrays]
+    non_overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2)) if is_overlapping(pair[0],pair[1])==0]
+    (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
+    ## iterate
+    Init_LL=[np.inf]
+    i=0
+    step_list=[0]
+    rho_list=[rho_update]
+    convergence='False'
+    while convergence=='False':
+        i+=1
+        print('iteration '+str(i)+'...')
+        step_list+=[i]
+        previous_LL=Init_LL[-1]
+        t1t2_list=OPTIMIZE_t1t2(overlapping_arrays, rho_update, size_lims)
+        OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
+        (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
+        Init_LL+=[neg_LL_update[0]]
+        rho_list+=[rho_update]
+        if neg_LL_update[0]>previous_LL:
+            convergence='True'
+    final_dist=dict(zip(pair_list,t1t2_list))
+    return(final_dist,rho_list[-1:])
+
 ######### Phylogeny from CRISPR_distance ###########
 
 def get_weights_for_all_pairs(df):
@@ -407,3 +454,21 @@ def phylogeny_from_CRISPR(arrays,final_dist):
 
     TREE=Tree(inner_clade,rooted=True)
     return(TREE,dic)
+
+
+def get_distance_matrix_from_phylogeny(Tree):
+    '''
+    Given a phylogenetic tree Tree, returns a reversible euclidian distance matrix (as a pandas dataframe)
+    '''
+    import pandas as pd
+    from itertools import combinations
+    taxa=sorted(map(int,[cl.name for cl in Tree.get_terminals()]))
+    matrix=pd.DataFrame([],columns=taxa,index=taxa)
+    for combi in combinations(range(len(taxa)),2):
+        tgt1=str(combi[0])
+        tgt2=str(combi[1])
+        dist=Tree.distance({"name": tgt1}, {"name": tgt2})
+        matrix.loc[combi]=dist
+        matrix.loc[combi[1],combi[0]]=dist
+    return(matrix)
+
