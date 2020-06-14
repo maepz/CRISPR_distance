@@ -1,18 +1,26 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# dependencies
+import pandas as pd
+from Bio.Phylo import BaseTree,draw_ascii
+from Bio.Phylo.BaseTree import Clade,Tree
+from scipy.optimize import minimize,Bounds
+from scipy.stats import poisson
+from mpmath import mpf,mp,findroot
+import itertools,os,multiprocessing
+import math
+import numpy as np
+
 # Here are the functions needed for CRISPR_distance
 
 # ## Get the ansestors
 def get_limits_ancestor_sizes(arrays,p_low=0.005,p_high=0.995):
     '''Given a set of arrays and rho, returns l1 and l2 the min and max ancestor lengths'''
-
-    from scipy.stats import poisson
     rho=sum([len(ar) for ar in arrays])/len([len(ar) for ar in arrays])
     return(tuple(poisson.ppf([p_low,p_high],rho).astype(int)))
 
 def nCr(n,r):
-        import math
         f = math.factorial
         return f(n) / f(r) / f(n-r)
 
@@ -61,7 +69,6 @@ class combi:
     the lengths of the putative ancestral arrays n = sum([c,i,j,u])"""
     
     def __init__(self,liste):
-        from CRISPR_functions import nCr
         self.list = liste
         self.c = liste[0]
         self.i = liste[1]
@@ -88,8 +95,7 @@ class combi:
         c2=len(PAIR.c2_spacers)
         dd1=len(PAIR.d1_spacers)
         dd2=len(PAIR.d2_spacers)
-
-
+        
         m1=c1+i
         d1=j+u+c-c1
         j1=dd1-i
@@ -102,7 +108,7 @@ class combi:
     def get_arrays(self,c_spacers,d1_spacers,d2_spacers): # to get the list of all possible arrays not usefull       
         array_list2=[]
         def merge_lists(lst1,lst2):
-            import itertools
+            
             array_list=[]
             for locations in itertools.combinations(range(len(lst1) + len(lst2)), len(lst2)):
                 result = lst1[:]
@@ -127,7 +133,6 @@ class combi:
 class CRISPR_pair:
     
     def __init__(self, s1,s2):
-        from CRISPR_functions import categorize_spacers_for_ordered_model
         self.s1 = s1
         self.s2 = s2
         self.c1_spacers, self.c2_spacers, self.d1_spacers, self.d2_spacers = categorize_spacers_for_ordered_model(self.s1,self.s2)
@@ -145,8 +150,7 @@ class CRISPR_pair:
         ws weight of each putative ancestral array from this combi.
         l1 (min ancestor length) and l2 (max ancestor length) have to be provided
         n length of ancestral array = sum(c,i,j,u) '''
-        from CRISPR_functions import combi
-        from mpmath import mpf,mp
+
         mp.dps = 100; mp.pretty = True
        
         l1=size_lims[0]
@@ -182,19 +186,15 @@ class CRISPR_pair:
 ### Length model 
 
 def rho(lbda,mu):
-    import numpy as np
     return(lbda/mu)
 
 def prob_n_given_ro(n,rho):
-    import numpy as np
     return((np.e**-rho)*(rho**n/np.math.factorial(n))) 
 
 ### Transitions prob for the ordered model
 
 def M(m,t,mu):
     '''probability of preserving m spacers in time t : M(m|t,mu)'''
-    from mpmath import mpf,mp
-    import numpy as np
     mp.dps = 100; mp.pretty = True
     exp_array = np.frompyfunc(mp.exp, 1, 1)
     M=exp_array(-m*t*mu)
@@ -202,8 +202,6 @@ def M(m,t,mu):
 
 def D(d,t,mu):
     '''probability of loosing d spacers in time t : D(d|t,mu)'''
-    from mpmath import mpf,mp
-    import numpy as np
     mp.dps = 100; mp.pretty = True
     exp_array = np.frompyfunc(mp.exp, 1, 1) # to make mp.exp work with arrays
     power_array = np.frompyfunc(mp.power, 2, 1) # to make mp.power work with arrays
@@ -212,8 +210,6 @@ def D(d,t,mu):
 
 def I(j,t,lbda,mu):
     '''probability of inserting d spacers in time t : D(d|t,mu)'''
-    from mpmath import mpf,mp
-    import numpy as np
     mp.dps = 100; mp.pretty = True
     rho=lbda/mu
     exp_array = np.frompyfunc(mp.exp, 1, 1)
@@ -223,23 +219,19 @@ def I(j,t,lbda,mu):
     return(I)
 
 
-def L(rho,t,PAIR,size_lims):
+def L(rho,t,PAIR,size_lims,ancestor_dict=None):
     '''The likelihood of a pair of spacer arrays (s1, s2) with
 times (t1, t2) anf rho'''
-    from CRISPR_functions import prob_n_given_ro, combi, CRISPR_pair, M, I, D
-    from mpmath import mpf
-
     t1=t[0]
     t2=t[1]
     l1=size_lims[0]
     l2=size_lims[1]
     lbda=rho/(rho+1)
     mu=1/(rho+1)
-    
-    ancestors_dic= PAIR.get_combi(size_lims)
+
     Likelihood=0
     
-    for s0,ws in ancestors_dic.items():
+    for s0,ws in ancestor_dict.items():
         combi_s0 = combi(list(map(int,s0.split('-'))))
         n=combi_s0.n
 
@@ -255,22 +247,18 @@ times (t1, t2) anf rho'''
 
     return(Likelihood)
 
-def neg_LL_floating_t(x,rho,PAIR,size_lims):
-    import numpy as np
-    from mpmath import mpf,mp
+def neg_LL_floating_t(x,rho,PAIR,size_lims,ancestor_dict):
     mp.dps = 100; mp.pretty = True
-    
+
     log_array = np.frompyfunc(mp.log, 1, 1) # to make mp.log work with arrays
-    return(np.float(-log_array(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims))))
+    return(np.float(-log_array(L(rho=rho,t=x,PAIR=PAIR,size_lims=size_lims,ancestor_dict=ancestor_dict))))
     
-def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays):
-    from mpmath import mpf,mp
-    import numpy as np
+def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays,ancestor_dicts):
     mp.dps = 100; mp.pretty = True
     
     log_array = np.frompyfunc(mp.log, 1, 1)
 
-    neg_LL_overlapping=sum([-log_array(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims)) for i in range(len(pair_list))])
+    neg_LL_overlapping=sum([-log_array(L(rho=x,t=t1t2_list[i],PAIR=pair_list[i],size_lims=size_lims,ancestor_dict=ancestor_dicts[i])) for i in range(len(pair_list))])
     neg_LL_non_overlapping=sum([-log_array(prob_n_given_ro(len(pair[0]),x)*prob_n_given_ro(len(pair[1]),x)) for pair in non_overlapping_arrays])
     
     return(neg_LL_overlapping+neg_LL_non_overlapping)
@@ -279,50 +267,48 @@ def neg_LL_floating_rho(x,t1t2_list,pair_list,size_lims,non_overlapping_arrays):
 ## Optimizers
 
 
-def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays):
+def OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays,ancestor_dicts):
     '''Provided a set of divergence times t1,t2 from ancestor to arrays for all array pairs, OPTIMIZE_rho finds the best rho'''
-    from scipy.optimize import minimize,Bounds
-    from mpmath import findroot,mpf
-    import numpy as np
     x0=[2]
     bounds=Bounds(lb=0,ub=np.inf)
 #     optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,method='Powell',args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # Powell is overshooting at some point and try a rh0<0; it seems bounds have not been implemented for this method
-    optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays)) # method=L-BFGS-B
+    optimize=minimize(neg_LL_floating_rho,x0,bounds=bounds,args=(t1t2_list,pair_list,size_lims,non_overlapping_arrays,ancestor_dicts)) # method=L-BFGS-B
     return(optimize.x,optimize.fun)
 
+
 def OPTIMIZE_t1t2(overlapping_arrays, rho, size_lims):
-    '''Provided a set of overlapping arrays and rho, OPTIMIZE_t1t2 finds their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
-    from scipy.optimize import minimize,Bounds
-    import numpy as np
+    '''!!! DEPRECADTED: USE INSTEAD THE PARALLEL VERSION !!!Provided a set of overlapping arrays and rho, OPTIMIZE_t1t2 finds their best respective divergence times t1,t2 from ancestor to arrays. The output is an array of [t1,t2] of length len(overlapping_arrays)'''
     t1t2_list=[]
 
     for pair in overlapping_arrays:
         PAIR=CRISPR_pair(pair[0],pair[1])
+        ancestor_dict = PAIR.get_combi(size_lims)
         x0=[1,1]
         bnds = ((0, None), (0, None))
 #         optimize=minimize(neg_LL_floating_t,x0,bounds=bounds,method='Powell',args=(rho,PAIR,size_lims))
-        optimize=minimize(neg_LL_floating_t,x0,bounds=bnds,args=(rho,PAIR,size_lims)) # method=L-BFGS-B
+        optimize=minimize(neg_LL_floating_t,x0,bounds=bnds,args=(rho,PAIR,size_lims,ancestor_dict)) # method=L-BFGS-B
         t1t2_list+=[tuple(optimize.x)]
     
     return(t1t2_list)
 
+def OPTIMIZE_pair_t1t2(args):
+    '''Provided an individual PAIR object, rho, size limits, and the pair ancestor dictionary, OPTIMIZE_t1t2 finds their best respective divergence times t1,t2 from ancestor to arrays. The output is (t1,t2) for the pair.'''
+    
+    PAIR, rho, size_lims, ancestor_dict = args
+
+    x0=[1,1]
+    bnds = ((0, None), (0, None))
+#     optimize=minimize(neg_LL_floating_t,x0,bounds=bounds,method='Powell',args=(rho,PAIR,size_lims))
+    optimize=minimize(neg_LL_floating_t,x0,bounds=bnds,args=(rho,PAIR,size_lims,ancestor_dict)) # method=L-BFGS-B
+    return(tuple(optimize.x))
 
 def find_optimum_rho_and_distances_ordered_model(arrays):
     '''
+    !!! DEPRECATED: USE INSTREAD THE PARALLEL VERSION !!!
     Given a list of arrays as input, optimize rho and t for the ordered model
     
     Output:dictionnary of pairs and their respecive distances, rho
-    
-    
     '''
-    
-    from mpmath import mpf
-    import itertools
-    from itertools import combinations
-    import numpy as np
-    import CRISPR_functions
-    from CRISPR_functions import get_limits_ancestor_sizes,CRISPR_pair, OPTIMIZE_rho,OPTIMIZE_t1t2,is_overlapping
-    
     overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2)) if is_overlapping(pair[0],pair[1])==1]
 
     ## first step
@@ -330,8 +316,9 @@ def find_optimum_rho_and_distances_ordered_model(arrays):
     size_lims=get_limits_ancestor_sizes(arrays)
     t1t2_list=OPTIMIZE_t1t2(overlapping_arrays, rho_init, size_lims)
     pair_list=[CRISPR_pair(pair[0],pair[1]) for pair in overlapping_arrays]
+    ancestor_dicts = [PAIR.get_combi(size_lims) for PAIR in pair_list]
     non_overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2)) if is_overlapping(pair[0],pair[1])==0]
-    (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
+    (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays,ancestor_dicts)
     ## iterate
     Init_LL=[np.inf]
     i=0
@@ -344,8 +331,7 @@ def find_optimum_rho_and_distances_ordered_model(arrays):
         step_list+=[i]
         previous_LL=Init_LL[-1]
         t1t2_list=OPTIMIZE_t1t2(overlapping_arrays, rho_update, size_lims)
-        OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
-        (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays)
+        (rho_update, neg_LL_update) = OPTIMIZE_rho(t1t2_list,pair_list,size_lims,non_overlapping_arrays,ancestor_dicts)
         Init_LL+=[neg_LL_update[0]]
         rho_list+=[rho_update]
         if neg_LL_update[0]>previous_LL:
@@ -359,11 +345,6 @@ def get_weights_for_all_pairs(df):
     '''
     Given a non-reversible distance matrix as pandas DataFrame, compute the weights for all pairs (x, y). Outputs the pair with maximum weight
     '''
-    import pandas as pd
-    import numpy as np
-    import itertools
-    from itertools import permutations
-
     wt=pd.DataFrame(np.nan,columns=df.columns,index=df.index)
 
     for tu in list(itertools.permutations(df.columns,2)):
@@ -382,8 +363,6 @@ def get_weights_for_all_pairs(df):
 
 def get_new_node_distance(df,max_pair):
     ''' Given a non-reversible distance matrix as pandas DataFrame and the pair of closest neighbors, create new node and calculate distance to new node. Outputs the non-reversible distance matric with new node. Note that the initial pair is not dropped from the df  '''
-    from Bio.Phylo import BaseTree,draw_ascii
-    from Bio.Phylo.BaseTree import Clade,Tree
     df2=df.copy()
     t=df.index.max()+1
     x=max_pair[0]
@@ -396,11 +375,6 @@ def get_new_node_distance(df,max_pair):
 
 def phylogeny_from_CRISPR(arrays,final_dist):
     '''Given a list of CRISPR arrays and a dictionnary of optimized distances, returns a phylogenetic tree (Tree class) of the CRISPR arrays and a dictionary of labels'''
-    import pandas as pd
-    import numpy as np
-    from Bio.Phylo import BaseTree,draw_ascii
-    from Bio.Phylo.BaseTree import Clade,Tree 
-
     names=[i for i in range(len(arrays))]
     seqs=['-'.join(map(str,arr)) for arr in arrays]
 
@@ -451,7 +425,6 @@ def phylogeny_from_CRISPR(arrays,final_dist):
         # rebuild distance matrix
         df=df.drop([min_i,min_j],axis=1).drop([min_i,min_j],axis=0)
 
-
     TREE=Tree(inner_clade,rooted=True)
     return(TREE,dic)
 
@@ -460,11 +433,9 @@ def get_distance_matrix_from_phylogeny(Tree):
     '''
     Given a phylogenetic tree Tree, returns a reversible euclidian distance matrix (as a pandas dataframe)
     '''
-    import pandas as pd
-    from itertools import combinations
     taxa=sorted(map(int,[cl.name for cl in Tree.get_terminals()]))
     matrix=pd.DataFrame([],columns=taxa,index=taxa)
-    for combi in combinations(range(len(taxa)),2):
+    for combi in itertools.combinations(range(len(taxa)),2):
         tgt1=str(combi[0])
         tgt2=str(combi[1])
         dist=Tree.distance({"name": tgt1}, {"name": tgt2})
@@ -472,3 +443,78 @@ def get_distance_matrix_from_phylogeny(Tree):
         matrix.loc[combi[1],combi[0]]=dist
     return(matrix)
 
+############ PARALLELIZED VERSION ################
+
+def get_nproc():
+    # if on beluga, use environment variable cpu count
+    if os.getenv('SLURM_CPUS_PER_TASK'):
+        return(int(os.getenv('SLURM_CPUS_PER_TASK')))
+    else:
+        return(multiprocessing.cpu_count())
+    
+def get_ancestor_dict(args):
+    '''Get dictionary of possible ancestors.'''
+    pair,size_lims = args
+    PAIR=CRISPR_pair(pair[0],pair[1])
+    return(PAIR.get_combi(size_lims))
+
+def main(arrays):
+
+    # get number of cores
+    nproc = get_nproc()
+    #set precision
+    mp.dps = 100; mp.pretty = True
+    # initialize rho
+    rho_init=mpf(sum([len(ar) for ar in arrays])/len([len(ar) for ar in arrays]))
+    # overlapping pairs (list)
+    overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2))
+                        if is_overlapping(pair[0],pair[1])==1]
+    # non-overlapping pairs (list)
+    non_overlapping_arrays=[pair for pair in list(itertools.combinations(arrays,2))
+                            if is_overlapping(pair[0],pair[1])==0]
+    # pair list (list of PAIR objects)
+    pairList = [CRISPR_pair(pair[0],pair[1]) for pair in overlapping_arrays]
+    # size limits
+    size_lims=get_limits_ancestor_sizes(arrays)
+    # generate ancestor dictionary
+    argList = [tuple([array,size_lims]) for array in overlapping_arrays]
+    with multiprocessing.Pool(processes=nproc) as pool:
+        ancestor_dicts = pool.map(get_ancestor_dict,argList)
+
+    # first iteration: get initial t1s,t2s, and rho
+    with multiprocessing.Pool(processes=nproc) as pool:
+        # create argList for optimization of t1 and t2
+        argList = [(pair,rho_init,size_lims,ancestor_dicts[index])
+                   for index,pair in enumerate(pairList)]
+        t1t2_list = pool.map(OPTIMIZE_pair_t1t2,argList)
+    rho_update, neg_LL_update = OPTIMIZE_rho(t1t2_list,pairList,size_lims,non_overlapping_arrays,ancestor_dicts)
+
+    Init_LL=[np.inf]
+    i=0
+    rho_list=[rho_update[0]]
+    convergence='False'
+    
+    # optimization of rho, and (t1, t2) of each pair
+    while convergence=='False':
+        i+=1
+        print('iteration '+str(i)+'...')
+        previous_LL=Init_LL[-1]
+        # optimize t1 and t2
+        with multiprocessing.Pool(processes=nproc) as pool:
+            argList = [(pair,rho_update,size_lims,ancestor_dicts[index])
+                       for index,pair in enumerate(pairList)]
+            t1t2_list = pool.map(OPTIMIZE_pair_t1t2,argList)
+        # optimize rho and return neg log likelihood
+        rho_update, neg_LL_update = OPTIMIZE_rho(t1t2_list,pairList,size_lims,non_overlapping_arrays,ancestor_dicts)
+        # check for convergence
+        Init_LL+=[neg_LL_update[0]]
+        rho_list+=[rho_update[0]]
+        if neg_LL_update[0]>previous_LL:
+            convergence='True'
+    final_dist=dict(zip(pairList,t1t2_list))
+    
+    # Get phylogeny and distance matrix
+    Tree,labels=phylogeny_from_CRISPR(arrays,final_dist)
+    dist=get_distance_matrix_from_phylogeny(Tree)
+    print(f'Final rho: {rho_list[-1]}')
+    return(Tree,dist,labels)
