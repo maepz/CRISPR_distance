@@ -462,6 +462,7 @@ def main(arrays):
 
     # get number of cores
     nproc = get_nproc()
+    print(f'number of processeors: {nproc}')
     #set precision
     mp.dps = 100; mp.pretty = True
     # initialize rho
@@ -476,19 +477,26 @@ def main(arrays):
     pairList = [CRISPR_pair(pair[0],pair[1]) for pair in overlapping_arrays]
     # size limits
     size_lims=get_limits_ancestor_sizes(arrays)
+    
     # generate ancestor dictionary
+    print('\nGenerating ancestors...')
     argList = [tuple([array,size_lims]) for array in overlapping_arrays]
     with multiprocessing.Pool(processes=nproc) as pool:
         ancestor_dicts = pool.map(get_ancestor_dict,argList)
+    print('Complete.\n')
 
     # first iteration: get initial t1s,t2s, and rho
+    print('Initial estimates...')
     with multiprocessing.Pool(processes=nproc) as pool:
         # create argList for optimization of t1 and t2
         argList = [(pair,rho_init,size_lims,ancestor_dicts[index])
                    for index,pair in enumerate(pairList)]
+        print('Estimating initial t1 and t2 lists...')
         t1t2_list = pool.map(OPTIMIZE_pair_t1t2,argList)
+    print('Complete. Updating rho...')
     rho_update, neg_LL_update = OPTIMIZE_rho(t1t2_list,pairList,size_lims,non_overlapping_arrays,ancestor_dicts)
-
+    print('Complete. Starting main interations.\n')
+    
     Init_LL=[np.inf]
     i=0
     rho_list=[rho_update[0]]
@@ -497,7 +505,7 @@ def main(arrays):
     # optimization of rho, and (t1, t2) of each pair
     while convergence=='False':
         i+=1
-        print('iteration '+str(i)+'...')
+        print('Iteration '+str(i)+'...')
         previous_LL=Init_LL[-1]
         # optimize t1 and t2
         with multiprocessing.Pool(processes=nproc) as pool:
@@ -511,6 +519,7 @@ def main(arrays):
         rho_list+=[rho_update[0]]
         if neg_LL_update[0]>previous_LL:
             convergence='True'
+    print('Converged.')
     final_dist=dict(zip(pairList,t1t2_list))
     
     # Get phylogeny and distance matrix
