@@ -1,7 +1,7 @@
 #!/bin/bash 
 #SBATCH --job-name=CRISPR_Distances
 #SBATCH --account=def-bacc
-#SBATCH --time=6:0:0
+#SBATCH --time=24:0:0
 #SBATCH --mem-per-cpu=2048M
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -12,4 +12,4 @@
 #SBATCH --mail-user=maepz@hotmail.com
 
 source /home/maeperez/virtualenv/py36/bin/activate
-python Run_Parallel_CRISPR_Distance.py Mydata/arrays_in_whole_dataset_v6.txt 
+python Run_Parallel_CRISPR_Distance.py Mydata/arrays_in_whole_dataset_v6.txt

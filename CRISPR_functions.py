@@ -499,11 +499,13 @@ def main(arrays):
     
     Init_LL=[np.inf]
     i=0
+    j=0
+    max_iters_after_converged = 5
     rho_list=[rho_update[0]]
-    convergence='False'
+    convergence=False
     
     # optimization of rho, and (t1, t2) of each pair
-    while convergence=='False':
+    while ((convergence==False) or (j <= max_iters_after_converged)):
         i+=1
         print('Iteration '+str(i)+'...')
         previous_LL=Init_LL[-1]
@@ -518,12 +520,15 @@ def main(arrays):
         Init_LL+=[neg_LL_update[0]]
         rho_list+=[rho_update[0]]
         if neg_LL_update[0]>previous_LL:
-            convergence='True'
+            convergence=True
+        if convergence == True: # iterating beyond convergence
+            j+=1
     print('Converged.')
     final_dist=dict(zip(pairList,t1t2_list))
-    
+    LOG = pd.DataFrame([Init_LL,rho_list],index=['LogLikelihood','Rho']).T
+
     # Get phylogeny and distance matrix
     Tree,labels=phylogeny_from_CRISPR(arrays,final_dist)
     dist=get_distance_matrix_from_phylogeny(Tree)
     print(f'Final rho: {rho_list[-1]}')
-    return(Tree,dist,labels)
+    return(Tree,dist,labels,LOG,final_dist)
