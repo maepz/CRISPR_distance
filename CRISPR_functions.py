@@ -445,12 +445,12 @@ def get_distance_matrix_from_phylogeny(Tree):
 
 ############ PARALLELIZED VERSION ################
 
-def get_nproc():
-    # if on beluga, use environment variable cpu count
-    if os.getenv('SLURM_CPUS_PER_TASK'):
-        return(int(os.getenv('SLURM_CPUS_PER_TASK')))
-    else:
-        return(multiprocessing.cpu_count())
+#def get_nproc():
+#    # if on beluga, use environment variable cpu count
+#    if os.getenv('SLURM_CPUS_PER_TASK'):
+#        return(int(os.getenv('SLURM_CPUS_PER_TASK')))
+#    else:
+#        return(multiprocessing.cpu_count())
     
 def get_ancestor_dict(args):
     '''Get dictionary of possible ancestors.'''
@@ -458,11 +458,8 @@ def get_ancestor_dict(args):
     PAIR=CRISPR_pair(pair[0],pair[1])
     return(PAIR.get_combi(size_lims))
 
-def main(arrays):
+def main(arrays,nproc):
 
-    # get number of cores
-    nproc = get_nproc()
-    print(f'number of processeors: {nproc}')
     #set precision
     mp.dps = 100; mp.pretty = True
     # initialize rho
