@@ -12,4 +12,4 @@
 #SBATCH --mail-user=maepz@hotmail.com
 
 source /home/maeperez/virtualenv/py36/bin/activate
-python Run_Parallel_CRISPR_Distance.py Mydata/arrays_in_whole_dataset_v6.txt
+python Run_Parallel_CRISPR_Distance.py -n $SLURM_CPUS_PER_TASK Mydata/arrays_in_whole_dataset_v6.txt Output
