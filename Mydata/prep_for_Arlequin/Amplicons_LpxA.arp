@@ -1,0 +1,323 @@
+[Profile]
+
+		Title=""
+		NbSamples=38
+		GenotypicData=0
+		LocusSeparator=WHITESPACE
+		DataType=FREQUENCY
+[Data]
+
+	[[HaplotypeDefinition]]
+		HaplListName="LpxA"
+		HaplList=EXTERN "LpxA.hap"
+	[[Samples]]
+
+		SampleName="R09L-4-Ta"
+		SampleSize=235
+		SampleData= {
+			LpxA_CC 54
+			LpxA_CT 84
+			LpxA_TC 48
+			LpxA_TT 49
+		}
+
+		SampleName="R09L-4-Tb"
+		SampleSize=324
+		SampleData= {
+			LpxA_CC 31
+			LpxA_CT 263
+			LpxA_TC 3
+			LpxA_TT 27
+		}
+
+		SampleName="R09L-4-Tc"
+		SampleSize=371
+		SampleData= {
+			LpxA_CC 32
+			LpxA_CT 293
+			LpxA_TC 6
+			LpxA_TT 40
+		}
+
+		SampleName="R07B-2-Ta"
+		SampleSize=267
+		SampleData= {
+			LpxA_CC 51
+			LpxA_CT 169
+			LpxA_TC 17
+			LpxA_TT 30
+		}
+
+		SampleName="R07B-2-Tb"
+		SampleSize=200
+		SampleData= {
+			LpxA_CC 26
+			LpxA_CT 19
+			LpxA_TC 120
+			LpxA_TT 35
+		}
+
+		SampleName="R07B-2-Tc"
+		SampleSize=239
+		SampleData= {
+			LpxA_CC 15
+			LpxA_CT 7
+			LpxA_TC 209
+			LpxA_TT 8
+		}
+
+		SampleName="R07B-2-Td"
+		SampleSize=573
+		SampleData= {
+			LpxA_CC 62
+			LpxA_CT 2
+			LpxA_TC 504
+			LpxA_TT 5
+		}
+
+		SampleName="R15H-3-T_old"
+		SampleSize=103
+		SampleData= {
+			LpxA_CC 102
+			LpxA_CT 1
+		}
+
+		SampleName="R08H-1-T"
+		SampleSize=343
+		SampleData= {
+			LpxA_CC 254
+			LpxA_CT 54
+			LpxA_TC 28
+			LpxA_TT 7
+		}
+
+		SampleName="R08H-2-Tb"
+		SampleSize=281
+		SampleData= {
+			LpxA_CC 38
+			LpxA_CT 182
+			LpxA_TC 14
+			LpxA_TT 47
+		}
+
+		SampleName="R08H-3-Ta"
+		SampleSize=314
+		SampleData= {
+			LpxA_CC 296
+			LpxA_CT 18
+		}
+
+		SampleName="R14B-3-T"
+		SampleSize=232
+		SampleData= {
+			LpxA_CC 229
+			LpxA_CT 3
+		}
+
+		SampleName="R16L-3-T"
+		SampleSize=377
+		SampleData= {
+			LpxA_CC 376
+			LpxA_CT 1
+		}
+
+		SampleName="R13L-5-T"
+		SampleSize=286
+		SampleData= {
+			LpxA_CC 155
+			LpxA_CT 131
+		}
+
+		SampleName="R08H-2-Ta"
+		SampleSize=332
+		SampleData= {
+			LpxA_CC 33
+			LpxA_CT 245
+			LpxA_TC 9
+			LpxA_TT 45
+		}
+
+		SampleName="R15H-1-T"
+		SampleSize=94
+		SampleData= {
+			LpxA_CC 93
+			LpxA_CT 1
+		}
+
+		SampleName="R09L-3-T"
+		SampleSize=268
+		SampleData= {
+			LpxA_CC 123
+			LpxA_CT 140
+			LpxA_TC 3
+			LpxA_TT 2
+		}
+
+		SampleName="R09L-2-Tc"
+		SampleSize=359
+		SampleData= {
+			LpxA_CC 169
+			LpxA_CT 127
+			LpxA_TC 40
+			LpxA_TT 23
+		}
+
+		SampleName="R09L-2-Tb"
+		SampleSize=287
+		SampleData= {
+			LpxA_CC 105
+			LpxA_CT 141
+			LpxA_TC 16
+			LpxA_TT 25
+		}
+
+		SampleName="R09L-2-Ta"
+		SampleSize=306
+		SampleData= {
+			LpxA_CC 171
+			LpxA_CT 96
+			LpxA_TC 20
+			LpxA_TT 19
+		}
+
+		SampleName="R08H-3-Tc"
+		SampleSize=382
+		SampleData= {
+			LpxA_CC 356
+			LpxA_CT 26
+		}
+
+		SampleName="R08H-3-Tb"
+		SampleSize=410
+		SampleData= {
+			LpxA_CC 328
+			LpxA_CT 75
+			LpxA_TC 3
+			LpxA_TT 4
+		}
+
+		SampleName="R08H-2-Tc"
+		SampleSize=293
+		SampleData= {
+			LpxA_CC 18
+			LpxA_CT 265
+			LpxA_TT 10
+		}
+
+		SampleName="R07B-3-T"
+		SampleSize=231
+		SampleData= {
+			LpxA_CC 94
+			LpxA_CT 91
+			LpxA_TC 26
+			LpxA_TT 20
+		}
+
+		SampleName="R07B-1-Td"
+		SampleSize=193
+		SampleData= {
+			LpxA_CC 99
+			LpxA_CT 61
+			LpxA_TC 23
+			LpxA_TT 10
+		}
+
+		SampleName="R07B-1-Tc"
+		SampleSize=266
+		SampleData= {
+			LpxA_CC 189
+			LpxA_CT 71
+			LpxA_TC 4
+			LpxA_TT 2
+		}
+
+		SampleName="R07B-1-Tb"
+		SampleSize=274
+		SampleData= {
+			LpxA_CC 122
+			LpxA_CT 78
+			LpxA_TC 49
+			LpxA_TT 25
+		}
+
+		SampleName="R07B-1-Ta"
+		SampleSize=297
+		SampleData= {
+			LpxA_CC 134
+			LpxA_CT 98
+			LpxA_TC 41
+			LpxA_TT 24
+		}
+
+		SampleName="R16L-3-T_bis"
+		SampleSize=98
+		SampleData= {
+			LpxA_CC 95
+			LpxA_CT 3
+		}
+
+		SampleName="R16L-2-T"
+		SampleSize=252
+		SampleData= {
+			LpxA_CC 249
+			LpxA_CT 3
+		}
+
+		SampleName="R16L-1-T"
+		SampleSize=309
+		SampleData= {
+			LpxA_CC 308
+			LpxA_CT 1
+		}
+
+		SampleName="R15H-3-T"
+		SampleSize=247
+		SampleData= {
+			LpxA_CC 246
+			LpxA_CT 1
+		}
+
+		SampleName="R15H-2-T"
+		SampleSize=346
+		SampleData= {
+			LpxA_CC 343
+			LpxA_CT 3
+		}
+
+		SampleName="R13L-3-T"
+		SampleSize=279
+		SampleData= {
+			LpxA_CC 46
+			LpxA_CT 233
+		}
+
+		SampleName="R13L-5-T_bis"
+		SampleSize=287
+		SampleData= {
+			LpxA_CC 180
+			LpxA_CT 107
+		}
+
+		SampleName="R13L-4-T"
+		SampleSize=334
+		SampleData= {
+			LpxA_CC 202
+			LpxA_CT 132
+		}
+
+		SampleName="R14B-4-T"
+		SampleSize=330
+		SampleData= {
+			LpxA_CC 329
+			LpxA_CT 1
+		}
+
+		SampleName="R14B-2-T"
+		SampleSize=260
+		SampleData= {
+			LpxA_CC 257
+			LpxA_CT 1
+			LpxA_TC 2
+		}
+
+
