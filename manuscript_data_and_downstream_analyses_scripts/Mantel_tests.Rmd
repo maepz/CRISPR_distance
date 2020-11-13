@@ -1,0 +1,92 @@
+---
+title: "Mantel tests"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+setwd("~/Desktop/CRISPR_distance/manuscript_data_and_downstream_analyses_scripts")
+knitr::opts_chunk$set(echo = TRUE)
+require(dplyr)
+require(reshape2)
+library('ggplot2')
+require('ade4')
+require('usedist')
+```
+
+# Import data
+## import and format Fst matrices
+```{r import pairwise Phi-ST matrices}
+## CRISPR
+crispr <- read.table('./CRISPR_pairwisePhist.txt',header=T,row.names=1,sep='\t') 
+colnames(crispr)=rownames(crispr)
+crispr = as.matrix(crispr)
+crispr = Matrix::forceSymmetric(crispr,uplo="L") %>% as.matrix(.)
+crispr = crispr[sort(rownames(crispr)),sort(rownames(crispr))]
+crispr %>% head
+
+
+## LpxA
+LpxA <- read.table('./Amplicons_LpxA_pairwiseFst.txt',header=T,row.names = 1,sep='\t')
+colnames(LpxA)=rownames(LpxA)
+LpxA = as.matrix(LpxA)
+LpxA = Matrix::forceSymmetric(LpxA,uplo="L") %>% as.matrix(.)
+LpxA = LpxA[sort(rownames(LpxA)),sort(rownames(LpxA))]
+LpxA %>% head
+
+## PleD
+PleD <- read.table('./Amplicons_PleD_pairwiseFst.txt',header=T,row.names = 1,sep='\t')
+colnames(PleD)=rownames(PleD)
+PleD = as.matrix(PleD)
+PleD = Matrix::forceSymmetric(PleD,uplo="L") %>% as.matrix(.)
+PleD = PleD[sort(rownames(PleD)),sort(rownames(PleD))]
+PleD %>% head
+
+```
+## subset Fst matrices to common samples
+```{r subset matrices}
+
+rownames(crispr)
+rownames(LpxA)
+
+core_samples = intersect(rownames(crispr),rownames(LpxA))
+crispr.dist = dist_subset(crispr,core_samples)
+LpxA.dist = dist_subset(LpxA,core_samples)
+PleD.dist = dist_subset(PleD,core_samples)
+
+length(crispr.dist)
+length(LpxA.dist)
+length(PleD.dist)
+```
+# Run mantel test
+```{r}
+plot(crispr.dist,LpxA.dist)
+
+library(ggpmisc)
+my.formula <- y ~ x
+ggplot(dat=as.data.frame(cbind(crispr.dist,PleD.dist)),aes(x=crispr.dist, y=PleD.dist))+
+  geom_point()+
+  geom_smooth(method='lm')+
+  stat_poly_eq(formula = my.formula, 
+                aes(label = paste(..eq.label.., ..rr.label.., sep = "~~~")), 
+                parse = TRUE)
+
+
+
+# How likely is it that CRISPR distances and LpxA distances are unrelated?
+mantel.rtest(crispr.dist, LpxA.dist, nrepet = 9999)
+# --> Simulated p-value: 1e-04 ; very unlikely
+
+plot(crispr.dist,PleD.dist)
+# How likely is it that CRISPR distances and PleD distances are unrelated?
+mantel.rtest(crispr.dist, PleD.dist, nrepet = 9999)
+plot(mantel.rtest(crispr.dist, PleD.dist, nrepet = 9999))
+# --> Simulated p-value: 1e-04 ; very unlikely
+
+plot(LpxA.dist,PleD.dist)
+# How likely is it that LpxA distances and PleD distances are unrelated?
+mantel.rtest(LpxA.dist, PleD.dist, nrepet = 9999)
+# --> Simulated p-value: 1e-04 ; very unlikely
+
+```

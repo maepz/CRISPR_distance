@@ -1,0 +1,346 @@
+---
+title: "Amplicons AMOVA analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Init environment and import packages
+```{r setup, include=FALSE}
+setwd("~/Desktop/CRISPR_distance/manuscript_data_and_downstream_analyses_scripts")
+knitr::opts_chunk$set(echo = TRUE)
+require('dplyr')
+require('reshape2')
+library('ggplot2')
+require('ade4')
+require('usedist') # package used to subset distance matrix
+require('poppr')
+require('vegan')
+require('ape')
+```
+
+# Init functions
+
+```{r}
+fix_phi_df <- function(df){
+  df1 <- arrange(df, -row_number())
+  rownames(df1) <- rev(rownames(df))
+  df1=rbind(df1,data.frame(row.names = 'Total',Phi = NA))
+  return(df1)
+}
+
+build_results_table <- function(res) {
+  
+  pval = randtest(res, nrepet =999)
+  
+  pval = rbind(data.frame(P.value=rev(pval$pvalue),row.names = rev(pval$names)),data.frame(row.names = 'Total',P.value = NA))
+  
+  table=cbind(res$results,res$componentsofcovariance,pval,fix_phi_df(res$statphi))
+  
+  return(table)
+  
+}
+
+
+
+```
+
+
+# Import data. One haplotype per sequence read
+## Import Amplicons data
+```{r}
+
+#### Import Amplicons allele counts in populations ####
+path_to_Amplicons_allele_counts_in_pop = './Amplicons_haplotypes_all.txt'
+
+Amplicons_all = read.table(path_to_Amplicons_allele_counts_in_pop,header=TRUE,sep='\t')
+
+colnames(Amplicons_all) = c('Sample', colnames(Amplicons_all) %>% gsub('\\.','-',.) %>% .[2:length(.)])
+Amplicons_all[is.na(Amplicons_all)] <- 0
+rownames(Amplicons_all) = as.character(Amplicons_all$Sample) %>% substr(., 13, nchar(.))
+
+Amplicons_all %>% head
+
+
+### Import metdata ###
+path_to_Amplicons_metadata = '~/Dropbox/CRISPR_haplo/Amplicons_metadata.txt'
+
+Amplicons_meta=read.table(path_to_Amplicons_metadata,header=T,sep='\t',as.is = c("Site",'Region','Flow','Ind','Duplicate'))
+Amplicons_meta$Sample = as.character(Amplicons_meta$Sample) %>% substr(., 5, nchar(.))
+row.names(Amplicons_meta)=Amplicons_meta$Sample
+colnames(Amplicons_meta)[7]='dupl'
+Amplicons_meta$chunk = substr(Amplicons_meta$Sample, nchar(Amplicons_meta$Sample)-1, nchar(Amplicons_meta$Sample))
+Amplicons_meta$chunk[Amplicons_meta$chunk %in% c('-T','is','ld')] = 'full'
+
+Amplicons_meta=Amplicons_meta[,-c(1,2,8)]
+Amplicons_meta %>% head(.)
+
+
+
+Amplicons_haplos=merge(Amplicons_all,Amplicons_meta, by=0,all.x=T)
+rownames(Amplicons_haplos)=Amplicons_haplos$Row.names
+Amplicons_haplos=Amplicons_haplos[,3:ncol(Amplicons_haplos)]
+
+Amplicons_haplos %>% head()
+str(Amplicons_haplos)
+
+#### Import per-read allele counts in populations. #### 
+
+path_to_LpxA_per_read_allele_counts_in_pop = './LpxA_per_read.txt'
+path_to_PleD_per_read_allele_counts_in_pop = './PleD_per_read.txt'
+
+Amplicons_LpxA_per_read <- read.table(path_to_LpxA_per_read_allele_counts_in_pop,header=T,row.names = 1,sep='\t')
+Amplicons_LpxA_per_read
+
+Amplicons_PleD_per_read <- read.table(path_to_PleD_per_read_allele_counts_in_pop,header=T,row.names = 1,sep='\t')
+Amplicons_PleD_per_read
+
+#### Import Phi-st distance matrix #### 
+#...
+
+path_to_LpxA_Phist_matrix = './Amplicons_LpxA_pairwiseFst.txt'
+
+path_to_PleD_Phist_matrix = './Amplicons_PleD_pairwiseFst.txt'
+
+
+LpxA_phist=read.csv(path_to_LpxA_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(LpxA_phist) = c(colnames(LpxA_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+LpxA_phist=as.dist(as.matrix(LpxA_phist))
+LpxA_phist=dist_subset(LpxA_phist,idx=sort(labels(LpxA_phist)))
+  
+LpxA_phist_nomv=dist_subset(LpxA_phist,idx = END_samples)
+
+PleD_phist=read.csv(path_to_PleD_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(PleD_phist) = c(colnames(PleD_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+PleD_phist=as.dist(as.matrix(PleD_phist))
+PleD_phist=dist_subset(PleD_phist,idx=sort(labels(PleD_phist)))
+  
+PleD_phist_nomv=dist_subset(PleD_phist,idx = END_samples)
+```
+
+
+# Duplicates 
+Is the distribution of Amplicons haplotypes the same between technical duplicates? 
+Significant differences (Pval <0.1) were found for LpxA R13L-5-T and R16L-3-T
+
+```{r}
+#### Amplicons ####
+LpxA_dupl1=Amplicons_all[c("R13L-5-T","R13L-5-T_bis"),2:5]
+LpxA_dupl1_nozero=LpxA_dupl1[rowSums(LpxA_dupl1)>0,]
+fisher.test(LpxA_dupl1)
+diversity(t(LpxA_dupl1))  %>% mean(.)
+
+LpxA_dupl2=Amplicons_all[c("R15H-3-T","R15H-3-T_old"),2:5]
+LpxA_dupl2_nozero=LpxA_dupl2[rowSums(LpxA_dupl2)>0,]
+fisher.test(LpxA_dupl2)
+diversity(t(LpxA_dupl2))  %>% mean(.)
+
+LpxA_dupl3=Amplicons_all[c("R16L-3-T","R16L-3-T_bis"),2:5]
+LpxA_dupl3_nozero=LpxA_dupl3[rowSums(LpxA_dupl3)>0,]
+fisher.test(LpxA_dupl3)
+diversity(t(LpxA_dupl3))  %>% mean(.)
+
+
+PleD_dupl1=Amplicons_all[c("R13L-5-T","R13L-5-T_bis"),6:9]
+PleD_dupl1_nozero=PleD_dupl1[rowSums(PleD_dupl1)>0,]
+fisher.test(PleD_dupl1)
+diversity(t(PleD_dupl1))  %>% mean(.)
+
+PleD_dupl2=Amplicons_all[c("R15H-3-T","R15H-3-T_old"),6:9]
+PleD_dupl2_nozero=PleD_dupl2[rowSums(PleD_dupl2)>0,]
+fisher.test(PleD_dupl2)
+diversity(t(PleD_dupl2))  %>% mean(.)
+
+PleD_dupl3=Amplicons_all[c("R16L-3-T","R16L-3-T_bis"),6:9]
+PleD_dupl3_nozero=PleD_dupl3[rowSums(PleD_dupl3)>0,]
+fisher.test(PleD_dupl3)
+diversity(t(PleD_dupl3))  %>% mean(.)
+
+```
+
+
+# Run ade4's AMOVA analysis using the Poppr wrapper
+
+## Create genind object
+
+Add info about identical technical replicates to meta data
+```{r}
+
+Amplicons_meta$DedupInd<-ifelse(rownames(Amplicons_meta) == 'R13L-5-T_bis','R13L-5-T_bis',
+                      ifelse(rownames(Amplicons_meta) == 'R16L-3-T_bis','R16L-3-T_bis', Amplicons_meta$Ind))
+Amplicons_meta$Sample = rownames(Amplicons_meta)
+
+head(Amplicons_meta)
+str(Amplicons_meta)
+```
+
+
+```{r}
+
+
+LpxA_per_read_meta = merge(Amplicons_LpxA_per_read[,c('Sample','read_id.1')],Amplicons_meta[,c('Sample','Site','Ind','Region','Flow','dupl','chunk','DedupInd')], by='Sample', all.x=T)
+rownames(LpxA_per_read_meta) = LpxA_per_read_meta$read_id.1
+LpxA_per_read_meta$read_id.1 <- NULL
+LpxA_per_read_meta %>% head
+
+PleD_per_read_meta = merge(Amplicons_PleD_per_read[,c('Sample','read_id.1')],Amplicons_meta[,c('Sample','Site','Ind','Region','Flow','dupl','chunk','DedupInd')], by='Sample', all.x=T)
+rownames(PleD_per_read_meta) = PleD_per_read_meta$read_id.1
+PleD_per_read_meta$read_id.1 <- NULL
+PleD_per_read_meta %>% head
+
+LpxA=as.data.frame(Amplicons_LpxA_per_read[,'haplo'],row.names = row.names(Amplicons_LpxA_per_read))
+colnames(LpxA)[1]='haplo'
+LpxA %>% head
+
+LpxA_obj <- df2genind(LpxA, ploidy=1,pop=factor(LpxA_per_read_meta$Sample), strata=LpxA_per_read_meta)
+
+PleD=as.data.frame(Amplicons_PleD_per_read[,'haplo'],row.names = row.names(Amplicons_PleD_per_read))
+colnames(PleD)[1]='haplo'
+PleD %>% head
+
+PleD_obj <- df2genind(PleD, ploidy=1,pop=factor(PleD_per_read_meta$Sample), strata=PleD_per_read_meta)
+
+popsub(PleD_obj)
+as.genclone(PleD_obj)
+```
+
+## AMOVA in the MEF (sites within Flow + trophosome sections within hosts)
+```{r}
+CB_MV=c('R13','R14','R15','R16')
+
+MEF_samples = popNames(LpxA_obj)[!(popNames(LpxA_obj) %>% grepl(paste(CB_MV, collapse="|"),.))]
+
+LpxA.MEF = popsub(LpxA_obj, sublist=MEF_samples)
+PleD.MEF = popsub(PleD_obj, sublist=MEF_samples)
+
+LpxA.MEF.amova = poppr.amova(LpxA.MEF,hier=~Flow/Ind/Sample,clonecorrect = FALSE,within=F,threads=4,method='ade4')
+# randtest(LpxA.MEF.amova, nrepet = 999)
+build_results_table(LpxA.MEF.amova)
+
+
+PleD.MEF.amova = poppr.amova(PleD.MEF,hier=~Flow/Ind/Sample,clonecorrect = FALSE,within=F,threads=4,method='ade4')
+# randtest(PleD.MEF.amova, nrepet = 999)
+build_results_table(PleD.MEF.amova)
+
+```
+
+
+## AMOVA all regions
+
+```{r}
+LpxA.JdF.anova.region = poppr.amova(LpxA_obj,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+LpxA.JdF.anova.region
+# randtest(LpxA.JdF.anova.region, nrepet = 999)
+build_results_table(LpxA.JdF.anova.region)
+
+
+PleD.JdF.anova.region = poppr.amova(PleD_obj,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+PleD.JdF.anova.region
+# randtest(PleD.JdF.anova.region, nrepet = 999)
+build_results_table(PleD.JdF.anova.region)
+
+
+LpxA.JdF.anova.flow = poppr.amova(LpxA_obj,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# LpxA.JdF.anova.flow
+# randtest(LpxA.JdF.anova.flow, nrepet = 999)
+build_results_table(LpxA.JdF.anova.flow)
+
+PleD.JdF.anova.flow = poppr.amova(PleD_obj,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# PleD.JdF.anova.flow
+# randtest(PleD.JdF.anova.flow, nrepet = 999)
+build_results_table(PleD.JdF.anova.flow)
+
+```
+
+## AMOVA witout MV
+```{r}
+MV = c('R15','R16')
+END_samples = popNames(LpxA_obj)[!(popNames(LpxA_obj) %>% grepl(paste(MV, collapse="|"),.))]
+
+LpxA_END = popsub(LpxA_obj, sublist=END_samples)
+PleD_END = popsub(PleD_obj, sublist=END_samples)
+
+LpxA.END.amova.region = poppr.amova(LpxA_END,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# LpxA.END.amova.region
+# randtest(LpxA.END.amova.region, nrepet = 999)
+build_results_table(LpxA.END.amova.region)
+
+
+LpxA.END.amova.flow = poppr.amova(LpxA_END,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# LpxA.END.amova.flow
+# randtest(LpxA.END.amova.flow, nrepet = 999)
+build_results_table(LpxA.END.amova.flow)
+
+
+PleD.END.amova.region = poppr.amova(PleD_END,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# PleD.END.amova.region
+# randtest(PleD.END.amova.region, nrepet = 999)
+build_results_table(PleD.END.amova.region)
+
+
+PleD.END.amova.flow = poppr.amova(PleD_END,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4')
+# PleD.END.amova.flow
+# randtest(PleD.END.amova.flow, nrepet = 999)
+build_results_table(PleD.END.amova.flow)
+
+```
+
+# Plot ordinations
+
+## PcoA on Phi-st distances (all samples)
+```{r}
+gene_phist= PleD_phist
+
+dat=as.data.frame(pcoa(gene_phist)$vectors)[,1:2]
+var_expl=pcoa(phist)$values$Relative_eig
+
+dat['Sample']=rownames(dat)
+dat=merge(dat,meta,by='Sample', all.x=T)
+dat %>% head
+dat$Region=factor(dat$Region,levels=c('MV','CB','MEF'))
+dat$Flow=factor(dat$Flow,levels=c('H','L','B'))
+dat$Habitat=paste(dat$Region,dat$Flow,sep='-')
+dat$Habitat=factor(dat$Habitat,levels=c('MV-H','MV-L','CB-H','CB-B','MEF-H','MEF-L','MEF-B'))
+  
+habitat_colors=c(`MV-H` = "#a63603", 
+`MV-L` = "#e6550d", `CB-H` = "#006d2c",`CB-B` = "#b2df8a",  
+`MEF-H` = "#08519c", `MEF-L` = "#3182bd", `MEF-B` = "#9ecae1")
+
+ggplot(dat)+
+  geom_point(aes(x=Axis.1,y=Axis.2, color=Habitat, shape=Flow),size=3)+
+  xlab(paste('PCoA 1 (',sprintf("%0.1f%%", var_expl[1]*100),')'))+
+  ylab(paste('PCoA 2 (',sprintf("%0.1f%%", var_expl[2]*100),')'))+
+  scale_color_manual(values = habitat_colors)+
+  theme_bw()
+
+
+```
+
+## PcoA on Phi-st distances (witout MV)
+```{r}
+phist_nomv = LpxA_phist_nomv
+phist_nomv = PleD_phist_nomv
+
+dat=as.data.frame(pcoa(phist_nomv)$vectors)[,1:2]
+str(pcoa(phist))
+var_expl=pcoa(phist)$values$Relative_eig
+
+dat['Sample']=rownames(dat)
+dat=merge(dat,meta,by='Sample', all.x=T)
+dat %>% head
+dat$Region=factor(dat$Region,levels=c('MV','CB','MEF'))
+dat$Flow=factor(dat$Flow,levels=c('H','L','B'))
+dat$Habitat=paste(dat$Region,dat$Flow,sep='-')
+dat$Habitat=factor(dat$Habitat,levels=c('MV-H','MV-L','CB-H','CB-B','MEF-H','MEF-L','MEF-B'))
+  
+habitat_colors=c(`MV-H` = "#a63603", 
+`MV-L` = "#e6550d", `CB-H` = "#006d2c",`CB-B` = "#b2df8a",  
+`MEF-H` = "#08519c", `MEF-L` = "#3182bd", `MEF-B` = "#9ecae1")
+
+ggplot(dat)+
+  geom_point(aes(x=Axis.1,y=Axis.2, color=Habitat, shape=Flow),size=3)+
+  xlab(paste('PCoA 1 (',sprintf("%0.1f%%", var_expl[1]*100),')'))+
+  ylab(paste('PCoA 2 (',sprintf("%0.1f%%", var_expl[2]*100),')'))+
+  scale_color_manual(values = habitat_colors)+
+  theme_bw()
+
+```

@@ -1,0 +1,332 @@
+---
+title: "CRISPR AMOVA analysis"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+# Init environment and import packages
+```{r setup, include=FALSE}
+setwd("~/Desktop/CRISPR_distance/manuscript_data_and_downstream_analyses_scripts")
+knitr::opts_chunk$set(echo = TRUE)
+require('dplyr')
+require('reshape2')
+library('ggplot2')
+require('ade4')
+require('usedist') # package used to subset distance matrix
+require('poppr')
+require('vegan')
+require('ape')
+```
+
+# Init functions
+
+```{r}
+fix_phi_df <- function(df){
+  df1 <- arrange(df, -row_number())
+  rownames(df1) <- rev(rownames(df))
+  df1=rbind(df1,data.frame(row.names = 'Total',Phi = NA))
+  return(df1)
+}
+
+build_results_table <- function(res) {
+  
+  pval = randtest(res, nrepet =999)
+  
+  pval = rbind(data.frame(P.value=rev(pval$pvalue),row.names = rev(pval$names)),data.frame(row.names = 'Total',P.value = NA))
+  
+  table=cbind(res$results,res$componentsofcovariance,pval,fix_phi_df(res$statphi))
+  
+  return(table)
+  
+}
+
+
+
+```
+
+# Import data. One haplotype per sequence read
+
+```{r}
+#### Import CRISPR Array distance matrix issued from Kupczok and Bollback (2013) algorithm ####
+path_to_CRISPR_arrays_distance_matrix = './CRISPRarrays_estimated_pairwiseDist.csv'
+
+crispr_dist_all = read.csv(path_to_CRISPR_arrays_distance_matrix,header=T,row.names = 1,sep='\t')
+colnames(crispr_dist_all)=c(0,rownames(crispr_dist_all)[-10])
+tail(crispr_dist_all)
+
+crispr_dist_all<-as.dist(crispr_dist_all)
+attr(crispr_dist_all,'Labels') 
+
+crispr_dist_main<-dist_subset(crispr_dist_all, c(1:10)) # 10 main CRISPR haplotypes (haplotypes present in more than 5% of reads in at least one sample)
+
+#### Plot neighbor-joining tree of CRISPR haplotypes based on distances between haplotypes inffered by Kupczok and Bollback (2013) algorithm ####
+
+plot(nj(crispr_dist_all), "u")
+plot(nj(crispr_dist_main), "u")
+
+#### Import CRISPR allele counts in populations ####
+path_to_CRISPR_allele_counts_in_pop = '~./ALLCRISPRs_haplo_matches_at_5_dist_V6_sorted.txt'
+
+crispr_all = read.csv(path_to_CRISPR_allele_counts_in_pop,header=TRUE,sep=',')
+crispr_all[crispr_all$`seq.id`=="flk_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_tailprimer",] # H10 was not used in CRISPR distance calculation because it is empty of spacers
+crispr_all=crispr_all[-11,]
+
+colnames(crispr_all) = c('Array', colnames(crispr_all) %>% gsub('\\.','-',.) %>% .[2:length(.)])
+crispr_all$`seq-id` <-NULL
+crispr_all[is.na(crispr_all)] <- 0
+rownames(crispr_all)=c(0:122)
+crispr_all %>% head
+
+crispr_main = crispr_all[1:10,]
+crispr_main
+
+### Import metdata ###
+path_to_CRISPR_metadata = './CRISPR_metadata.txt'
+
+meta = read.csv(path_to_CRISPR_metadata,header=TRUE,sep='\t',as.is = T)
+meta$Sample = gsub('^.{4}', '', meta$Sample)
+meta$chunk = substr(meta$Sample, nchar(meta$Sample)-1, nchar(meta$Sample))
+# meta$chunk[!(meta$dupl %in% c('s'))] = 'full'
+meta$chunk[meta$chunk %in% c('-T','is','ld')] = 'full'
+
+meta %>% head
+str(meta)
+
+#### Import per-read allele counts in populations. #### 
+# CRISPR array "flk_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_tailprimer" was already discarded
+
+path_to_CRISPR_per_read_allele_counts_in_pop = './ALLCRISPRs_haplo_matches_at_5_dist_V6_sorted_per_read.txt'
+
+crispr_all_per_read <- read.table(path_to_CRISPR_per_read_allele_counts_in_pop,header=T,row.names = 1,sep='\t')
+
+
+#### Import Phi-st distance matrix ####
+
+path_to_Phist_matrix = './CRISPR_pairwisePhist.txt'
+
+phist=read.csv(path_to_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(phist) = c(colnames(phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+phist=phist[order(rownames(phist)), order(colnames(phist))]
+phist=as.dist(as.matrix(phist))
+str(phist)
+
+MV = c('R15','R16')
+END_samples = labels(phist)[!(labels(phist) %>% grepl(paste(MV, collapse="|"),.))]
+
+phist_nomv=dist_subset(phist,idx = END_samples)
+
+```
+
+
+# Species accumulation curves
+Did we sample all of the diversity of CRISPR spacers in each trophosome chunk?
+
+Getting accumulation curves on all 44 trophosome samples, we see only a few samples were sufficiently sampled to reveal their full diversity:
+R07B-1-Ta, R07B-1-Td, R07B-2-Tb, R16L-5-T, R16L-2-T
+The symbiont CRISPR diversity has not sufficiently been covered with the samples we took.
+```{r}
+library(vegan)
+raremax <- min(rowSums(t(crispr_all)))
+
+tcrispr=t(crispr_all)
+tcrispr= tcrispr[order(rownames(tcrispr)),,drop=FALSE] %>% .[-1,]
+
+a <- rarecurve(tcrispr[c(1:10),], step=1, cex=0.5) 
+b <- rarecurve(tcrispr[c(10:20),], step=1, cex=0.5)
+c <- rarecurve(tcrispr[c(30:40),], step=1, cex=0.5)
+d <- rarecurve(tcrispr[c(35:44),], step=1, cex=0.5)
+# rarecurve(t(crispr[,c(39:45)]), step = 20, sample = raremax, label = T)
+```
+
+However, the 10 main symbionts were sufficiently sampled with the 44 trophosome samples
+ 
+```{r}
+# With the samples we took, we have sufficiently covered the main symbiont diversity
+sp2<-specaccum(t(crispr_main[,c(2:45)]), method="random")
+plot(sp2)
+mods <- fitspecaccum(sp2, "arrh")
+plot(mods, col="hotpink")
+boxplot(sp2, col = "yellow", border = "blue", lty=1, cex=0.3, add= TRUE)
+
+```
+
+
+# Duplicates 
+Is the distribution of CRISPR haplotypes the same between technical duplicates? 
+R02H-8-T_bis: same with chisq, not the same with fisher test --> these will not be merged
+R15H-2-T:same --> the samples will be merged
+R15H-3-T:same --> the samples will be merged
+
+```{r}
+#### CRISPR ####
+dupl1=crispr_all[,c("R02H-8-T_bis","R02H-8-T")]
+dupl1_nozero=dupl1[rowSums(dupl1)>0,]
+chisq.test(dupl1_nozero)
+fisher.test(dupl1)
+diversity(t(dupl1),'simpson')  %>% mean(.)
+diversity(t(dupl1))  %>% mean(.)
+
+dupl2=crispr_all[,c("R15H-2-T_bis","R15H-2-T")]
+dupl2_nozero=dupl2[rowSums(dupl2)>0,]
+chisq.test(dupl2_nozero)
+fisher.test(dupl2)
+diversity(t(dupl2),'simpson') %>% mean(.)
+diversity(t(dupl2))  %>% mean(.)
+
+
+dupl3=crispr_all[,c("R15H-3-T_old","R15H-3-T")]
+dupl3_nozero=dupl3[rowSums(dupl3)>0,]
+chisq.test(dupl3_nozero)
+fisher.test(dupl3)
+diversity(t(dupl3),'simpson')
+diversity(t(dupl3))  %>% mean(.)
+
+
+```
+
+
+
+# Run ade4's AMOVA analysis using the Poppr wrapper
+
+## Create genind object
+
+Add info about identical technical replicates to meta data
+```{r}
+
+meta$DedupInd<-ifelse(meta$Sample == 'R02H-8-T_bis','R02H-8-T_bis',meta$Ind)
+  
+head(meta)
+```
+
+
+```{r}
+
+df %>% head
+meta %>% head
+
+per_read_meta = merge(df[,c('Sample','read_id.1')],meta[,c('Sample','Site','Ind','Region','Flow','dupl','chunk','DedupInd')], by='Sample', all.x=T)
+rownames(per_read_meta) = per_read_meta$read_id.1
+per_read_meta$read_id.1 <- NULL
+per_read_meta %>% head
+
+df1=as.data.frame(df[,'haplo'],row.names = row.names(df))
+colnames(df1)[1]='haplo'
+df1 %>% head
+obj <- df2genind(df1, ploidy=1,pop=factor(per_read_meta$Sample), strata=per_read_meta)
+
+popsub(obj)
+as.genclone(obj)
+```
+
+## AMOVA in the MEF (sites within Flow + trophosome sections within hosts)
+```{r}
+CB_MV=c('R13','R14','R15','R16')
+
+MEF_samples = popNames(obj)[!(popNames(obj) %>% grepl(paste(CB_MV, collapse="|"),.))]
+
+MEF = popsub(obj, sublist=MEF_samples)
+
+MEF.amova = poppr.amova(MEF,hier=~Flow/Site/Ind/chunk/Sample,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = MEF@all.names$haplo),squared=F,correction='lingoes')
+
+# MEF.amova
+# randtest(MEF.amova, nrepet = 999)
+build_results_table(MEF.amova)
+
+# ## converting a genind as data.frame
+# genind2df(obj)
+# genind2df(obj, sep="/")
+
+```
+
+## AMOVA all regions
+
+```{r}
+JdF.anova.region = poppr.amova(obj,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=crispr_dist_all, squared=F,,correction='lingoes')
+# JdF.anova.region
+# randtest(JdF.anova.region, nrepet = 999)
+build_results_table(JdF.anova.region)
+
+JdF.anova.flow = poppr.amova(obj,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=crispr_dist_all, squared=F,,correction='lingoes')
+# JdF.anova.flow
+# randtest(JdF.anova.flow, nrepet = 999)
+build_results_table(JdF.anova.flow)
+
+```
+
+## AMOVA witout MV
+```{r}
+MV = c('R15','R16')
+END_samples = popNames(obj)[!(popNames(obj) %>% grepl(paste(MV, collapse="|"),.))]
+
+END = popsub(obj, sublist=END_samples)
+
+END.amova.region = poppr.amova(END,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
+# END.amova.region
+# randtest(END.amova.region, nrepet = 999)
+build_results_table(END.amova.region)
+
+
+END.amova.flow = poppr.amova(END,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
+# END.amova.flow
+# randtest(END.amova.flow, nrepet = 999)
+build_results_table(END.amova.flow)
+
+```
+
+# Plot ordinations
+
+
+## PcoA on Phi-st distances (all samples)
+```{r}
+dat=as.data.frame(pcoa(phist)$vectors)[,1:2]
+str(pcoa(phist))
+var_expl=pcoa(phist)$values$Relative_eig
+
+dat['Sample']=rownames(dat)
+dat=merge(dat,meta,by='Sample', all.x=T)
+dat %>% head
+dat$Region=factor(dat$Region,levels=c('MV','CB','MEF'))
+dat$Flow=factor(dat$Flow,levels=c('H','L','B'))
+dat$Habitat=paste(dat$Region,dat$Flow,sep='-')
+dat$Habitat=factor(dat$Habitat,levels=c('MV-H','MV-L','CB-H','CB-B','MEF-H','MEF-L','MEF-B'))
+  
+habitat_colors=c(`MV-H` = "#a63603", 
+`MV-L` = "#e6550d", `CB-H` = "#006d2c",`CB-B` = "#b2df8a",  
+`MEF-H` = "#08519c", `MEF-L` = "#3182bd", `MEF-B` = "#9ecae1")
+
+ggplot(dat)+
+  geom_point(aes(x=Axis.1,y=Axis.2, color=Habitat, shape=Flow),size=3)+
+  xlab(paste('PCoA 1 (',sprintf("%0.1f%%", var_expl[1]*100),')'))+
+  ylab(paste('PCoA 2 (',sprintf("%0.1f%%", var_expl[2]*100),')'))+
+  scale_color_manual(values = habitat_colors)+
+  theme_bw()
+
+
+```
+
+## PcoA on Phi-st distances (witout MV)
+```{r}
+dat=as.data.frame(pcoa(phist_nomv)$vectors)[,1:2]
+str(pcoa(phist))
+var_expl=pcoa(phist)$values$Relative_eig
+
+dat['Sample']=rownames(dat)
+dat=merge(dat,meta,by='Sample', all.x=T)
+dat %>% head
+dat$Region=factor(dat$Region,levels=c('MV','CB','MEF'))
+dat$Flow=factor(dat$Flow,levels=c('H','L','B'))
+dat$Habitat=paste(dat$Region,dat$Flow,sep='-')
+dat$Habitat=factor(dat$Habitat,levels=c('MV-H','MV-L','CB-H','CB-B','MEF-H','MEF-L','MEF-B'))
+  
+habitat_colors=c(`MV-H` = "#a63603", 
+`MV-L` = "#e6550d", `CB-H` = "#006d2c",`CB-B` = "#b2df8a",  
+`MEF-H` = "#08519c", `MEF-L` = "#3182bd", `MEF-B` = "#9ecae1")
+
+ggplot(dat)+
+  geom_point(aes(x=Axis.1,y=Axis.2, color=Habitat, shape=Flow),size=3)+
+  xlab(paste('PCoA 1 (',sprintf("%0.1f%%", var_expl[1]*100),')'))+
+  ylab(paste('PCoA 2 (',sprintf("%0.1f%%", var_expl[2]*100),')'))+
+  scale_color_manual(values = habitat_colors)+
+  theme_bw()
+
+```
