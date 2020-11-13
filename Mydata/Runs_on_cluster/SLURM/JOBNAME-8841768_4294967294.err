@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "Run_Parallel_CRISPR_Distance.py", line 31, in <module>
-    df=pd.DataFrame(np.nan,columns=names,index=names)
-NameError: name 'np' is not defined
