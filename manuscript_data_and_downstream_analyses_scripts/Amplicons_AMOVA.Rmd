@@ -16,6 +16,7 @@ require('usedist') # package used to subset distance matrix
 require('poppr')
 require('vegan')
 require('ape')
+library(stringr)
 ```
 
 # Init functions
@@ -75,7 +76,6 @@ Amplicons_meta=Amplicons_meta[,-c(1,2,8)]
 Amplicons_meta %>% head(.)
 
 
-
 Amplicons_haplos=merge(Amplicons_all,Amplicons_meta, by=0,all.x=T)
 rownames(Amplicons_haplos)=Amplicons_haplos$Row.names
 Amplicons_haplos=Amplicons_haplos[,3:ncol(Amplicons_haplos)]
@@ -95,26 +95,68 @@ Amplicons_PleD_per_read <- read.table(path_to_PleD_per_read_allele_counts_in_pop
 Amplicons_PleD_per_read
 
 #### Import Phi-st distance matrix #### 
-#...
 
 path_to_LpxA_Phist_matrix = './Amplicons_LpxA_pairwiseFst.txt'
+path_to_LpxA_Phist_pval_matrix = './Amplicons_LpxA_pairwiseFst_pval.txt'
 
 path_to_PleD_Phist_matrix = './Amplicons_PleD_pairwiseFst.txt'
+path_to_PleD_Phist_pval_matrix = './Amplicons_PleD_pairwiseFst_pval.txt'
 
-
+# load phi-st matrices
 LpxA_phist=read.csv(path_to_LpxA_Phist_matrix,header=T,row.names = 1,sep='\t')
 colnames(LpxA_phist) = c(colnames(LpxA_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
-LpxA_phist=as.dist(as.matrix(LpxA_phist))
-LpxA_phist=dist_subset(LpxA_phist,idx=sort(labels(LpxA_phist)))
-  
-LpxA_phist_nomv=dist_subset(LpxA_phist,idx = END_samples)
+LpxA_phist %>% head
 
 PleD_phist=read.csv(path_to_PleD_Phist_matrix,header=T,row.names = 1,sep='\t')
 colnames(PleD_phist) = c(colnames(PleD_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
-PleD_phist=as.dist(as.matrix(PleD_phist))
-PleD_phist=dist_subset(PleD_phist,idx=sort(labels(PleD_phist)))
-  
+PleD_phist %>% head
+
+
+# load pvalue matrices and turned then into filter matrices whose role will be to remove instances of phi-st where max_pval > 0.05
+LpxA_phist_pval=read.csv(path_to_LpxA_Phist_pval_matrix,header=T,row.names = 1,sep='\t',as.is = T)
+colnames(LpxA_phist_pval) = c(colnames(LpxA_phist_pval) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+
+LpxA_phist_pval[LpxA_phist_pval == "*"] <- 0
+LpxA_phist_pval[LpxA_phist_pval == ""] <- NA
+LpxA_phist_pval = LpxA_phist_pval %>% mutate_all(funs(str_replace_all(., "\\+-", "|")))
+rownames(LpxA_phist_pval) = colnames(LpxA_phist_pval)
+LpxA_phist_pvalmax = LpxA_phist_pval %>% lapply(.,function(x) sapply(sapply((strsplit(x,"\\|")),as.numeric),sum)) %>% as.data.frame
+colnames(LpxA_phist_pvalmax) = c(colnames(LpxA_phist_pval))
+rownames(LpxA_phist_pvalmax) = c(colnames(LpxA_phist_pval))
+LpxA_phist_pvalmax[LpxA_phist_pvalmax > 0.05] <- NA
+LpxA_phist_pvalmax[LpxA_phist_pvalmax < 0.05] <- 1
+LpxA_phist_pvalmax %>% head
+
+
+PleD_phist_pval=read.csv(path_to_PleD_Phist_pval_matrix,header=T,row.names = 1,sep='\t',as.is = T)
+colnames(PleD_phist_pval) = c(colnames(PleD_phist_pval) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+
+PleD_phist_pval[PleD_phist_pval == "*"] <- 0
+PleD_phist_pval[PleD_phist_pval == ""] <- NA
+PleD_phist_pval = PleD_phist_pval %>% mutate_all(funs(str_replace_all(., "\\+-", "|")))
+rownames(PleD_phist_pval) = colnames(PleD_phist_pval)
+PleD_phist_pvalmax = PleD_phist_pval %>% lapply(.,function(x) sapply(sapply((strsplit(x,"\\|")),as.numeric),sum)) %>% as.data.frame
+colnames(PleD_phist_pvalmax) = c(colnames(PleD_phist_pval))
+rownames(PleD_phist_pvalmax) = c(colnames(PleD_phist_pval))
+PleD_phist_pvalmax[PleD_phist_pvalmax > 0.05] <- NA
+PleD_phist_pvalmax[PleD_phist_pvalmax < 0.05] <- 1
+PleD_phist_pvalmax %>% head
+
+# filter phi-st tables based on pval and sort the distance matrices in alphabetical order
+
+filtered_LpxA_phist = LpxA_phist * LpxA_phist_pvalmax 
+filtered_LpxA_phist = filtered_LpxA_phist %>% as.matrix() %>% as.dist()
+LpxA_phist = dist_subset(filtered_LpxA_phist,idx=sort(labels(filtered_LpxA_phist)))
+LpxA_phist
+LpxA_phist_nomv=dist_subset(LpxA_phist,idx = END_samples)
+
+filtered_PleD_phist = PleD_phist * PleD_phist_pvalmax 
+filtered_PleD_phist = filtered_PleD_phist %>% as.matrix() %>% as.dist()
+PleD_phist = dist_subset(filtered_PleD_phist,idx=sort(labels(filtered_PleD_phist)))
+PleD_phist
 PleD_phist_nomv=dist_subset(PleD_phist,idx = END_samples)
+
+
 ```
 
 

@@ -10,47 +10,119 @@ setwd("~/Desktop/CRISPR_distance/manuscript_data_and_downstream_analyses_scripts
 knitr::opts_chunk$set(echo = TRUE)
 require(dplyr)
 require(reshape2)
+require('stringr')
 library('ggplot2')
 require('ade4')
 require('usedist')
+require('vegan')
+# require('ape')
 ```
 
 # Import data
-## import and format Fst matrices
-```{r import pairwise Phi-ST matrices}
-## CRISPR
-crispr <- read.table('./CRISPR_pairwisePhist.txt',header=T,row.names=1,sep='\t') 
-colnames(crispr)=rownames(crispr)
-crispr = as.matrix(crispr)
-crispr = Matrix::forceSymmetric(crispr,uplo="L") %>% as.matrix(.)
-crispr = crispr[sort(rownames(crispr)),sort(rownames(crispr))]
-crispr %>% head
+
+## import Fst matrices and filter them based on pval
+```{r}
+#### Import Phi-st distance matrices #### 
+path_to_CRISPR_Phist_matrix = './CRISPR_pairwisePhist.txt'
+path_to_CRISPR_Phist_pval_matrix = './CRISPR_pairwisePhist_pval.txt'
+
+path_to_LpxA_Phist_matrix = './Amplicons_LpxA_pairwiseFst.txt'
+path_to_LpxA_Phist_pval_matrix = './Amplicons_LpxA_pairwiseFst_pval.txt'
+
+path_to_PleD_Phist_matrix = './Amplicons_PleD_pairwiseFst.txt'
+path_to_PleD_Phist_pval_matrix = './Amplicons_PleD_pairwiseFst_pval.txt'
+
+# load phi-st matrices
+CRISPR_phist=read.csv(path_to_CRISPR_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(CRISPR_phist) = c(colnames(CRISPR_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+CRISPR_phist %>% head
+
+LpxA_phist=read.csv(path_to_LpxA_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(LpxA_phist) = c(colnames(LpxA_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+LpxA_phist %>% head
+
+PleD_phist=read.csv(path_to_PleD_Phist_matrix,header=T,row.names = 1,sep='\t')
+colnames(PleD_phist) = c(colnames(PleD_phist) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+PleD_phist %>% head
+
+#### Import assicoated pval matrices #### 
+# load pvalue matrices and turned them into filter matrices for removing instances of phi-st where max_pval > 0.05
+CRISPR_phist_pval=read.csv(path_to_CRISPR_Phist_pval_matrix,header=T,row.names = 1,sep='\t',as.is = T)
+colnames(CRISPR_phist_pval) = c(colnames(CRISPR_phist_pval) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+# CRISPR_phist_pval
+# CRISPR_phist_pval[upper.tri(CRISPR_phist_pval)] <- NA
+# write.table(CRISPR_phist_pval, 'Amplicons_LpxA_pairwiseFst_pval2.txt', na='', row.names=T, col.names=T,sep='\t',quote=F)
 
 
-## LpxA
-LpxA <- read.table('./Amplicons_LpxA_pairwiseFst.txt',header=T,row.names = 1,sep='\t')
-colnames(LpxA)=rownames(LpxA)
-LpxA = as.matrix(LpxA)
-LpxA = Matrix::forceSymmetric(LpxA,uplo="L") %>% as.matrix(.)
-LpxA = LpxA[sort(rownames(LpxA)),sort(rownames(LpxA))]
-LpxA %>% head
+LpxA_phist_pval=read.csv(path_to_LpxA_Phist_pval_matrix,header=T,row.names = 1,sep='\t',as.is = T)
+colnames(LpxA_phist_pval) = c(colnames(LpxA_phist_pval) %>% gsub('\\.','-',.) %>% .[1:length(.)])
 
-## PleD
-PleD <- read.table('./Amplicons_PleD_pairwiseFst.txt',header=T,row.names = 1,sep='\t')
-colnames(PleD)=rownames(PleD)
-PleD = as.matrix(PleD)
-PleD = Matrix::forceSymmetric(PleD,uplo="L") %>% as.matrix(.)
-PleD = PleD[sort(rownames(PleD)),sort(rownames(PleD))]
-PleD %>% head
+## parse matrices
+CRISPR_phist_pval[CRISPR_phist_pval == "*"] <- 0
+CRISPR_phist_pval[CRISPR_phist_pval == ""] <- NA
+CRISPR_phist_pval = CRISPR_phist_pval %>% mutate_all(funs(str_replace_all(., "\\+-", "|")))
+rownames(CRISPR_phist_pval) = colnames(CRISPR_phist_pval)
+CRISPR_phist_pvalmax = CRISPR_phist_pval %>% lapply(.,function(x) sapply(sapply((strsplit(x,"\\|")),as.numeric),sum)) %>% as.data.frame # pval + sd (max pval)
+colnames(CRISPR_phist_pvalmax) = c(colnames(CRISPR_phist_pval))
+rownames(CRISPR_phist_pvalmax) = c(colnames(CRISPR_phist_pval))
+CRISPR_phist_pvalmax[CRISPR_phist_pvalmax > 0.05] <- NA
+CRISPR_phist_pvalmax[CRISPR_phist_pvalmax < 0.05] <- 1
+CRISPR_phist_pvalmax %>% head
+
+LpxA_phist_pval[LpxA_phist_pval == "*"] <- 0
+LpxA_phist_pval[LpxA_phist_pval == ""] <- NA
+LpxA_phist_pval = LpxA_phist_pval %>% mutate_all(funs(str_replace_all(., "\\+-", "|")))
+rownames(LpxA_phist_pval) = colnames(LpxA_phist_pval)
+LpxA_phist_pvalmax = LpxA_phist_pval %>% lapply(.,function(x) sapply(sapply((strsplit(x,"\\|")),as.numeric),sum)) %>% as.data.frame # pval + sd (max pval)
+colnames(LpxA_phist_pvalmax) = c(colnames(LpxA_phist_pval))
+rownames(LpxA_phist_pvalmax) = c(colnames(LpxA_phist_pval))
+LpxA_phist_pvalmax[LpxA_phist_pvalmax > 0.05] <- NA
+LpxA_phist_pvalmax[LpxA_phist_pvalmax < 0.05] <- 1
+LpxA_phist_pvalmax %>% head
+
+
+PleD_phist_pval=read.csv(path_to_PleD_Phist_pval_matrix,header=T,row.names = 1,sep='\t',as.is = T)
+colnames(PleD_phist_pval) = c(colnames(PleD_phist_pval) %>% gsub('\\.','-',.) %>% .[1:length(.)])
+
+PleD_phist_pval[PleD_phist_pval == "*"] <- 0
+PleD_phist_pval[PleD_phist_pval == ""] <- NA
+PleD_phist_pval = PleD_phist_pval %>% mutate_all(funs(str_replace_all(., "\\+-", "|")))
+rownames(PleD_phist_pval) = colnames(PleD_phist_pval)
+PleD_phist_pvalmax = PleD_phist_pval %>% lapply(.,function(x) sapply(sapply((strsplit(x,"\\|")),as.numeric),sum)) %>% as.data.frame
+colnames(PleD_phist_pvalmax) = c(colnames(PleD_phist_pval))
+rownames(PleD_phist_pvalmax) = c(colnames(PleD_phist_pval))
+PleD_phist_pvalmax[PleD_phist_pvalmax > 0.05] <- NA
+PleD_phist_pvalmax[PleD_phist_pvalmax < 0.05] <- 1
+PleD_phist_pvalmax %>% head
+
+#### filter population distance matrices ####
+# filter phi-st tables based on pval and sort the distance matrices in alphabetical order
+filtered_CRISPR_phist = CRISPR_phist * CRISPR_phist_pvalmax 
+filtered_CRISPR_phist = filtered_CRISPR_phist %>% as.matrix() %>% as.dist()
+# x= as.data.frame(as.matrix((filtered_CRISPR_phist)))
+# x[upper.tri(x)] <- NA
+# write.table(x, 'CRISPR_pairwiseFst_filtered.txt', na='', row.names=T, col.names=T,sep='\t',quote=F)
+
+crispr = dist_subset(filtered_CRISPR_phist,idx=sort(labels(filtered_CRISPR_phist)))
+crispr
+
+filtered_LpxA_phist = LpxA_phist * LpxA_phist_pvalmax 
+filtered_LpxA_phist = filtered_LpxA_phist %>% as.matrix() %>% as.dist()
+LpxA = dist_subset(filtered_LpxA_phist,idx=sort(labels(filtered_LpxA_phist)))
+LpxA
+
+filtered_PleD_phist = PleD_phist * PleD_phist_pvalmax 
+filtered_PleD_phist = filtered_PleD_phist %>% as.matrix() %>% as.dist()
+PleD = dist_subset(filtered_PleD_phist,idx=sort(labels(filtered_PleD_phist)))
+
 
 ```
+
 ## subset Fst matrices to common samples
 ```{r subset matrices}
+core_samples = intersect(labels(crispr),labels(PleD))
 
-rownames(crispr)
-rownames(LpxA)
 
-core_samples = intersect(rownames(crispr),rownames(LpxA))
 crispr.dist = dist_subset(crispr,core_samples)
 LpxA.dist = dist_subset(LpxA,core_samples)
 PleD.dist = dist_subset(PleD,core_samples)
@@ -61,7 +133,6 @@ length(PleD.dist)
 ```
 # Run mantel test
 ```{r}
-plot(crispr.dist,LpxA.dist)
 
 library(ggpmisc)
 my.formula <- y ~ x
@@ -73,20 +144,60 @@ ggplot(dat=as.data.frame(cbind(crispr.dist,PleD.dist)),aes(x=crispr.dist, y=PleD
                 parse = TRUE)
 
 
+?mantel.test # from 'ape'; NAs not allowed and have to be replaced by 0
+?mantel # from vegan; rows with NAs are removed
+
 
 # How likely is it that CRISPR distances and LpxA distances are unrelated?
-mantel.rtest(crispr.dist, LpxA.dist, nrepet = 9999)
-# --> Simulated p-value: 1e-04 ; very unlikely
+mantel(crispr.dist, LpxA.dist, permutations = 9999, na.rm=T)
+
+x=as.matrix(crispr.dist)
+x[is.na(x)]<-0
+y=as.matrix(LpxA.dist)
+y[is.na(y)]<-0
+mantel.test(x, y, nperm = 9999,graph = F)
+
+
+plot(crispr.dist,LpxA.dist)
+
+# --> Simulated p-value: 2e-04 / 1e-04; very unlikely
+
+
+# How likely is it that CRISPR distances and PleD distances are unrelated?
+
+mantel(crispr.dist, PleD.dist, permutations = 9999, na.rm=T)
+
+x=as.matrix(crispr.dist)
+x[is.na(x)]<-0
+y=as.matrix(PleD.dist)
+y[is.na(y)]<-0
+mantel.test(x, y, nperm = 9999,graph = F)
+
 
 plot(crispr.dist,PleD.dist)
-# How likely is it that CRISPR distances and PleD distances are unrelated?
-mantel.rtest(crispr.dist, PleD.dist, nrepet = 9999)
-plot(mantel.rtest(crispr.dist, PleD.dist, nrepet = 9999))
+
 # --> Simulated p-value: 1e-04 ; very unlikely
 
-plot(LpxA.dist,PleD.dist)
 # How likely is it that LpxA distances and PleD distances are unrelated?
-mantel.rtest(LpxA.dist, PleD.dist, nrepet = 9999)
+
+mantel(LpxA.dist, PleD.dist, permutations = 9999, na.rm=T)
+
+x=as.matrix(LpxA.dist)
+x[is.na(x)]<-0
+y=as.matrix(PleD.dist)
+y[is.na(y)]<-0
+mantel.test(x, y, nperm = 9999,graph = F)
+
+
+plot(LpxA.dist,PleD.dist)
 # --> Simulated p-value: 1e-04 ; very unlikely
+
+
+# # all samples common to LpxA and PleD
+# mantel(LpxA, PleD, permutations = 9999, na.rm=T)
+# plot(LpxA,PleD)
+
+
+
 
 ```
