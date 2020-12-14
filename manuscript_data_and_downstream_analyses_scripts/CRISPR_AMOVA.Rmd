@@ -16,6 +16,7 @@ require('usedist') # package used to subset distance matrix
 require('poppr')
 require('vegan')
 require('ape')
+require('igraph')
 ```
 
 # Init functions
@@ -26,7 +27,7 @@ fix_phi_df <- function(df){
   rownames(df1) <- rev(rownames(df))
   df1=rbind(df1,data.frame(row.names = 'Total',Phi = NA))
   return(df1)
-}
+} # reorder rows of Phi-st output in poppr.amova
 
 build_results_table <- function(res) {
   
@@ -38,9 +39,67 @@ build_results_table <- function(res) {
   
   return(table)
   
-}
+} # Parse results of poppr.amova
 
-
+Get_pop_params = function(gid,palette='rainbow'){
+  ## load functions we need from poppr
+  .clonecorrector<-poppr:::.clonecorrector
+  palette_parser<-poppr:::palette_parser
+  
+  ## Parse pop data
+  mlgs <- mll(gid) 
+  cgid   <- gid[.clonecorrector(gid), ]
+  cmlg <- mll(cgid) #come up in same order as gid mlls
+  npop   <- nPop(gid)
+  npop   <- if (npop == 0) 1 else npop
+  pnames <- popNames(gid)
+  pnames <- if (is.null(pnames)) "pop" else pnames
+    
+  ## Generate color vector in palette name provided or use provided color vector, default in none provided = rainbow
+    if(length(palette)==1){
+        color  <- palette_parser(palette, npop, pnames)
+    } else {color <- palette}
+    mlg.number <- table(mlgs)[rank(cmlg)]
+    names(mlg.number) <- paste0('MLG.', names(mlg.number))
+    piece_of_pie <- !is.null(pnames) && npop > 1
+    if (piece_of_pie){
+      # Obtaining population information for all MLGs
+      subs   <- sort(unique(mlgs))
+      mlg.cp <- mlg.crosspop(gid, mlgsub = subs, quiet=TRUE)
+      if (is.numeric(mlgs)){
+        names(mlg.cp) <- paste0("MLG.", sort(unique(mlgs)))    
+      }
+      mlg.cp <- mlg.cp[rank(cmlg)]  
+      # This creates a list of colors corresponding to populations.
+      mlg.color <- lapply(mlg.cp, function(x) color[pnames %in% names(x)])
+      # Set shape and circle color vectors
+      mlg.sp        <- rep("pie", length(mlg.cp)) # set shape
+      names(mlg.sp) <- names(mlg.cp)
+      mlg.cc        <- rep(NA, length(mlg.cp)) # set circle color
+      names(mlg.cc) <- names(mlg.cp)
+      # Transform pie made of single population into circle
+      pie.single    <- lengths(mlg.cp) == 1
+      if (any(pie.single)) {
+        mlg.sp[pie.single] <- "circle"
+        mlg.cc[pie.single] <- unlist(mlg.color[pie.single])
+      }
+    }
+  
+  ## Get correspondance for MLG ids and haplo names
+  haplo= strsplit(rownames(cgid@tab),'_') %>% sapply(tail, 2 ) %>% .[1,] %>% paste('',.,sep='') %>% as.numeric
+  names(haplo) <- paste0('MLG.',cmlg)
+  
+  ## Build params object for igraph
+  params=list('mlg.labels' = haplo,
+              'mlg.sp' = mlg.sp,
+              'mlg.cc' = mlg.cc,
+              'mlg.number' = mlg.number,
+              'mlg.color' = mlg.color,
+              'mlg.cp' = mlg.cp)
+  
+  # mat = cbind(Haplo,mlg.sp ,mlg.cc, mlg.number) %>% as.data.frame
+  return(params)
+} # Get population parameters fron Genind object. Used for editing MST
 
 ```
 
@@ -48,35 +107,27 @@ build_results_table <- function(res) {
 
 ```{r}
 #### Import CRISPR Array distance matrix issued from Kupczok and Bollback (2013) algorithm ####
-path_to_CRISPR_arrays_distance_matrix = './CRISPRarrays_estimated_pairwiseDist.csv'
 
-crispr_dist_all = read.csv(path_to_CRISPR_arrays_distance_matrix,header=T,row.names = 1,sep='\t')
-colnames(crispr_dist_all)=c(0,rownames(crispr_dist_all)[-10])
+#### noneg v1 ####
+path_to_CRISPR_arrays_distance_matrix = './CRISPRarrays_estimated_pairwiseDist.csv'
+crispr_dist_all = read.csv(path_to_CRISPR_arrays_distance_matrix2,header=T,sep='\t',row.names=1)
+colnames(crispr_dist_all)=c(1:length(colnames(crispr_dist_all))-1)
+rownames(crispr_dist_all)=colnames(crispr_dist_all)
 tail(crispr_dist_all)
 
 crispr_dist_all<-as.dist(crispr_dist_all)
 attr(crispr_dist_all,'Labels') 
 
-crispr_dist_main<-dist_subset(crispr_dist_all, c(1:10)) # 10 main CRISPR haplotypes (haplotypes present in more than 5% of reads in at least one sample)
-
-#### Plot neighbor-joining tree of CRISPR haplotypes based on distances between haplotypes inffered by Kupczok and Bollback (2013) algorithm ####
-
-plot(nj(crispr_dist_all), "u")
-plot(nj(crispr_dist_main), "u")
-
 #### Import CRISPR allele counts in populations ####
-path_to_CRISPR_allele_counts_in_pop = '~./ALLCRISPRs_haplo_matches_at_5_dist_V6_sorted.txt'
+path_to_CRISPR_allele_counts_in_pop ='./ALLCRISPRs_haplo_matches_at_5_dist_V6_sorted.txt'
 
 crispr_all = read.csv(path_to_CRISPR_allele_counts_in_pop,header=TRUE,sep=',')
-crispr_all[crispr_all$`seq.id`=="flk_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_tailprimer",] # H10 was not used in CRISPR distance calculation because it is empty of spacers
-crispr_all=crispr_all[-11,]
 
 colnames(crispr_all) = c('Array', colnames(crispr_all) %>% gsub('\\.','-',.) %>% .[2:length(.)])
 crispr_all$`seq-id` <-NULL
 crispr_all[is.na(crispr_all)] <- 0
-rownames(crispr_all)=c(0:122)
-crispr_all %>% head
-
+rownames(crispr_all)=c(0:123)
+crispr_all %>% tail
 crispr_main = crispr_all[1:10,]
 crispr_main
 
@@ -88,19 +139,19 @@ meta$Sample = gsub('^.{4}', '', meta$Sample)
 meta$chunk = substr(meta$Sample, nchar(meta$Sample)-1, nchar(meta$Sample))
 # meta$chunk[!(meta$dupl %in% c('s'))] = 'full'
 meta$chunk[meta$chunk %in% c('-T','is','ld')] = 'full'
-
+meta$Habitat <-paste(meta$Region,meta$Flow, sep = '-')
 meta %>% head
 str(meta)
 
 #### Import per-read allele counts in populations. #### 
-# CRISPR array "flk_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_NA_tailprimer" was already discarded
 
-path_to_CRISPR_per_read_allele_counts_in_pop = './ALLCRISPRs_haplo_matches_at_5_dist_V6_sorted_per_read.txt'
+
+path_to_CRISPR_per_read_allele_counts_in_pop = './ALL_CRISPRs_haplo_matches_at_5_dist_V6_sorted_per_read.txt'
 
 crispr_all_per_read <- read.table(path_to_CRISPR_per_read_allele_counts_in_pop,header=T,row.names = 1,sep='\t')
 
 
-#### Import Phi-st distance matrix ####
+#### Import Phi-st distance matrix for PcoA analyses ####
 
 path_to_Phist_matrix = './CRISPR_pairwisePhist.txt'
 
@@ -185,10 +236,7 @@ diversity(t(dupl3))  %>% mean(.)
 ```
 
 
-
-# Run ade4's AMOVA analysis using the Poppr wrapper
-
-## Create genind object
+# Create genind object
 
 Add info about identical technical replicates to meta data
 ```{r}
@@ -200,11 +248,12 @@ head(meta)
 
 
 ```{r}
-
+df = crispr_all_per_read
 df %>% head
+df$haplo %>% unique() %>% sort()
 meta %>% head
 
-per_read_meta = merge(df[,c('Sample','read_id.1')],meta[,c('Sample','Site','Ind','Region','Flow','dupl','chunk','DedupInd')], by='Sample', all.x=T)
+per_read_meta = merge(df[,c('Sample','read_id.1')],meta[,c('Sample','Site','Ind','Region','Flow','Habitat','dupl','chunk','DedupInd')], by='Sample', all.x=T)
 rownames(per_read_meta) = per_read_meta$read_id.1
 per_read_meta$read_id.1 <- NULL
 per_read_meta %>% head
@@ -218,6 +267,165 @@ popsub(obj)
 as.genclone(obj)
 ```
 
+# Minimum Spanning Trees (MSTs)
+## By Individual hosts
+```{r}
+Ind_obj<- clonecorrect(obj, strata = ~Ind, combine = TRUE, keep = 1) 
+haplos_vec = strsplit(rownames(Ind_obj@tab),'_') %>% sapply(tail, 2 ) %>% .[1,]
+reads_dist = as.matrix(crispr_dist_all)[haplos_vec,haplos_vec] %>% as.dist()
+
+MST <- poppr.msn(Ind_obj,reads_dist,gadj = 15, vertex.label = 'MLG') # get initial MST
+g <- MST$graph
+
+Ind_pop<-clonecorrect(obj, strata = ~Sample, combine = TRUE, keep = 1) 
+Ind_pop@pop<- Ind_pop@strata$Ind
+params_full = Get_pop_params(Ind_pop,palette=colors)
+
+## Edit MST
+
+colors = c('#b3e1cc','#ccebc6','#f4f093','#7fb0d1','#bd5a2e','#d9d9d9','#ef8b5f','#a7762c','#fffccc','#cab0d4','#e4f3c6','#f7ccab','#bdaed4','#cccccc','#f3b260','#7dc77d','#55af4b','#d95f35','#999999','#bdb8d9','#666666','#fdeb6e','#e7468b','#974ca1','#b3de69','#fdf0ae','#df3b34','#f0e2cc','#899cc7')
+names(colors) = as.factor(levels(Ind_obj@pop))
+# library(scales)
+# show_col(colors)
+
+params = Get_pop_params(Ind_obj,palette=colors)
+
+mlg.size = params_full$mlg.number[V(g)$label]
+mlg.sp = params$mlg.sp[V(g)$label]
+mlg.cc = params$mlg.cc[V(g)$label]
+mlg.labels = params$mlg.labels[V(g)$label]
+mlg.color = params$mlg.color[V(g)$label]
+mlg.cp = params_full$mlg.cp[V(g)$label]
+                            
+## Apply params to MST
+
+
+table = cbind(mlg.labels,mlg.size,mlg.cc,mlg.sp) %>% as.data.frame
+table$mlg.mlgs = rownames(table)
+rownames(table) = table$mlg.labels
+
+
+cols.num <- c('mlg.labels', 'mlg.size')
+table[cols.num] <- sapply(table[cols.num],as.numeric)
+table['mlg.size'][is.na(table['mlg.size'])] <- 0
+table['mlg.sp'][is.na(table['mlg.sp'])] <-'circle'
+table$mlg.labels.main <- table$mlg.labels
+table$mlg.labels.main[!(table$mlg.labels.main %in% c(0,1,2,3,4,5,6,7,8,9))]<-NA
+
+rownames(table)<-table$mlg.mlgs
+table = table[V(g)$label,]
+
+par(mar=c(0,0,0,0))
+
+# set.seed(2)
+# set.seed(9)
+set.seed(14)
+plot <- plot.igraph(
+        g,
+        vertex.size = (log10(table$mlg.size+0.5) *10) ,
+        vertex.shape = table$mlg.sp,
+        vertex.color = table$mlg.cc,
+        vertex.label = table$mlg.labels.main,
+        vertex.label.color="black",
+
+        vertex.pie = mlg.cp[table$mlg.mlgs],
+        vertex.pie.color = mlg.color[table$mlg.mlgs],
+        
+        edge.arrow.size = 0,
+        edge.width = 2,
+        edge.color='grey',
+
+        # layout =  layout_as_tree(g,root = c('0'),circular = T)
+        # layout = layout_as_tree(g,mode='all',root=c('0'),circular=F)
+        layout =  layout_with_fr
+        
+
+
+)
+
+```
+
+## By Habitats
+```{r}
+Hab_obj<- clonecorrect(obj, strata = ~Habitat, combine = TRUE, keep = 1) 
+haplos_vec = strsplit(rownames(Hab_obj@tab),'_') %>% sapply(tail, 2 ) %>% .[1,]
+reads_dist = as.matrix(crispr_dist_all)[haplos_vec,haplos_vec] %>% as.dist()
+
+# commented in order to get same tree layout as By Individuals
+# MST <- poppr.msn(Hab_obj,reads_dist,gadj = 15, vertex.label = 'MLG') # get initial MST
+# g <- MST$graph
+
+Hab_pop<-obj
+Hab_pop@pop<- Hab_pop@strata$Habitat
+params_full = Get_pop_params(Hab_pop,palette=colors)
+
+## Edit MST
+
+colors=c('#347fbd','#184f9c','#9ccae1','#326c2c','#b0de8a','#a63625','#e65537')
+names(colors) = levels(Hab_obj$pop)
+
+params = Get_pop_params(Hab_obj,palette=colors)
+mlg.size = params_full$mlg.number[V(g)$label]
+mlg.sp = params$mlg.sp[V(g)$label]
+mlg.cc = params$mlg.cc[V(g)$label]
+mlg.labels = params$mlg.labels[V(g)$label]
+mlg.color = params$mlg.color[V(g)$label]
+mlg.cp = params_full$mlg.cp[V(g)$label]
+
+
+## Apply params to MST
+
+
+table = cbind(mlg.labels,mlg.size,mlg.cc,mlg.sp) %>% as.data.frame
+table$mlg.mlgs = rownames(table)
+rownames(table) = table$mlg.labels
+
+cols.num <- c('mlg.labels', 'mlg.size')
+table[cols.num] <- sapply(table[cols.num],as.numeric)
+table['mlg.size'][is.na(table['mlg.size'])] <- 0
+table['mlg.sp'][is.na(table['mlg.sp'])] <-'circle'
+table$mlg.labels.main <- table$mlg.labels
+table$mlg.labels.main[!(table$mlg.labels.main %in% c(0,1,2,3,4,5,6,7,8,9))]<-NA
+
+# totab = crispr_all[,-1] %>% rowSums()
+# relab = decostand(t(crispr_all[,-1]), method = "total") %>% colSums()
+# counts = cbind(totab,relab) %>% as.data.frame()
+# colnames(counts)<-c('totab','relab')
+# table = merge(table,counts, by=0, all.x=T)
+rownames(table)<-table$mlg.mlgs
+table = table[V(g)$label,]
+
+par(mar=c(0,0,0,0))
+
+
+# set.seed(2)
+# set.seed(9)
+set.seed(14)
+plt <- plot.igraph(
+        g,
+        vertex.size =(log10(table$mlg.size)*4.5),
+
+        vertex.shape = table$mlg.sp,
+        vertex.color = table$mlg.cc,
+        vertex.label = table$mlg.labels.main,
+        vertex.label.color="black",
+
+        vertex.pie = mlg.cp[table$mlg.mlgs],
+        vertex.pie.color = mlg.color[table$mlg.mlgs],
+        
+        edge.arrow.size = 0,
+        edge.width = 2,
+        edge.color='grey',
+
+        # layout =  layout_as_tree(g,root = c('0'),circular = T)
+        layout =  layout_with_fr
+
+)
+
+```
+
+
+# Run ade4's AMOVA analysis using the Poppr wrapper
 ## AMOVA in the MEF (sites within Flow + trophosome sections within hosts)
 ```{r}
 CB_MV=c('R13','R14','R15','R16')
@@ -230,8 +438,8 @@ MEF.amova = poppr.amova(MEF,hier=~Flow/Site/Ind/chunk/Sample,clonecorrect = FALS
 
 # MEF.amova
 # randtest(MEF.amova, nrepet = 999)
-build_results_table(MEF.amova)
-
+mefamova = build_results_table(MEF.amova)
+mefamova
 # ## converting a genind as data.frame
 # genind2df(obj)
 # genind2df(obj, sep="/")
@@ -241,15 +449,16 @@ build_results_table(MEF.amova)
 ## AMOVA all regions
 
 ```{r}
-JdF.anova.region = poppr.amova(obj,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=crispr_dist_all, squared=F,,correction='lingoes')
+JdF.anova.region = poppr.amova(obj,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=crispr_dist_all, squared=F,correction='lingoes')
 # JdF.anova.region
 # randtest(JdF.anova.region, nrepet = 999)
-build_results_table(JdF.anova.region)
+a<- build_results_table(JdF.anova.region)
+
 
 JdF.anova.flow = poppr.amova(obj,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=crispr_dist_all, squared=F,,correction='lingoes')
 # JdF.anova.flow
 # randtest(JdF.anova.flow, nrepet = 999)
-build_results_table(JdF.anova.flow)
+b<-build_results_table(JdF.anova.flow)
 
 ```
 
@@ -263,15 +472,37 @@ END = popsub(obj, sublist=END_samples)
 END.amova.region = poppr.amova(END,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
 # END.amova.region
 # randtest(END.amova.region, nrepet = 999)
-build_results_table(END.amova.region)
+c<-build_results_table(END.amova.region)
 
 
 END.amova.flow = poppr.amova(END,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
 # END.amova.flow
 # randtest(END.amova.flow, nrepet = 999)
-build_results_table(END.amova.flow)
+d<-build_results_table(END.amova.flow)
 
 ```
+
+
+## AMOVA witout MV and LF samples; only HF vs B
+```{r}
+exclude = c('R15H','R16L', 'R01L', 'R09L')
+END_samples = popNames(obj)[!(popNames(obj) %>% grepl(paste(exclude, collapse="|"),.))]
+
+END = popsub(obj, sublist=END_samples)
+
+END.amova.region = poppr.amova(END,hier=~Region/Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
+# END.amova.region
+# randtest(END.amova.region, nrepet = 999)
+e<-build_results_table(END.amova.region)
+
+
+END.amova.flow = poppr.amova(END,hier=~Flow/DedupInd,clonecorrect = FALSE,within=TRUE,threads=4,method='ade4',dist=dist_subset(crispr_dist_all,idx = END@all.names$haplo),squared=F,correction='lingoes')
+# END.amova.flow
+# randtest(END.amova.flow, nrepet = 999)
+f<-build_results_table(END.amova.flow)
+
+```
+
 
 # Plot ordinations
 
@@ -330,3 +561,4 @@ ggplot(dat)+
   theme_bw()
 
 ```
+
