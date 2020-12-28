@@ -263,6 +263,7 @@ colnames(df1)[1]='haplo'
 df1 %>% head
 obj <- df2genind(df1, ploidy=1,pop=factor(per_read_meta$Sample), strata=per_read_meta)
 
+obj@tab
 popsub(obj)
 as.genclone(obj)
 ```
@@ -407,7 +408,9 @@ plt <- plot.igraph(
 
         vertex.shape = table$mlg.sp,
         vertex.color = table$mlg.cc,
-        vertex.label = table$mlg.labels.main,
+        # vertex.label = table$mlg.labels.main,
+        vertex.label = table$mlg.size,
+
         vertex.label.color="black",
 
         vertex.pie = mlg.cp[table$mlg.mlgs],
