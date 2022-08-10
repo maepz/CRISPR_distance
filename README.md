@@ -1,11 +1,11 @@
 # CRISPR_distance
 An implementation of the Kupczok and Bollback (2013) method.
 
-Kupczok, A., and Bollback, J.P. 2013. Probabilistic models for CRISPR spacer content evolution. BMC Evolutionary Biology 13(1): 54. doi:10.1186/1471-2148-13-54.
+Kupczok, A., and Bollback, J.P. 2013. Probabilistic models for CRISPR spacer content evolution. BMC Evolutionary Biology 13(1): 54. doi:[10.1186/1471-2148-13-54.](https://bmcecolevol.biomedcentral.com/articles/10.1186/1471-2148-13-54)
 
-Reference paper:
+<b>Reference paper:</b>
 
-Perez, M., Angers B., Young C.R., and Juniper S.K. (2021) Shining light on a deep-sea bacterial symbiont population structure with CRISPR. Microbial Genomics 7(8): 000625. doi:10.1099/mgen.0.000625
+Perez, M., Angers B., Young C.R., and Juniper S.K. (2021) Shining light on a deep-sea bacterial symbiont population structure with CRISPR. Microbial Genomics 7(8): 000625. doi:[10.1099/mgen.0.000625](https://doi.org/10.1099/mgen.0.000625)
 
 ## DEPENDENCIES:
 python 3.6
